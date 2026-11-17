@@ -343,6 +343,8 @@ static BOOL _dnssecWarningDisplayed;
     self.chatListTable.dataSource = self;
     
     self.view = self.chatListTable;
+    //VELO: storie (come la riga di cerchi sopra le chat della Velo Android)
+    self.chatListTable.tableHeaderView = [VeloStoriesUI makeHeaderViewWithWidth:self.view.bounds.size.width];
     
     self.sizeClass = [SizeClassWrapper new];
     [self updateSizeClass];

@@ -397,7 +397,10 @@ struct ChatView: View {
         if !messages.isEmpty {
             beforeId = messages[0].innerMessage.messageDBId
         }
-        let oldMessages: [ChatViewMessage] = (DataLayer.sharedInstance().messages(forContact:contact.contactJid, forAccount:contact.accountID, beforeMsgHistoryID:beforeId) as! [MLMessage]).map {ChatViewMessage($0)}
+        //VELO: le storie stanno nella barra sopra le chat, non nella chat
+        let oldMessages: [ChatViewMessage] = (DataLayer.sharedInstance().messages(forContact:contact.contactJid, forAccount:contact.accountID, beforeMsgHistoryID:beforeId) as! [MLMessage])
+            .filter { !VeloMessageRules.isStory(account: $0.accountID, buddy: $0.buddyName, messageId: $0.messageId) }
+            .map {ChatViewMessage($0)}
         //insert what we got from the db
         if !oldMessages.isEmpty {
             messages.insert(contentsOf: oldMessages, at:0)
@@ -1047,7 +1050,7 @@ struct ChatView: View {
             guard let message = notification.userInfo?["message"] as? MLMessage else {
                 unreachable("kMonalNewMessageNotice notification without message!")
             }
-            if message.isEqual(self.contact.obj) {
+            if message.isEqual(self.contact.obj) && !VeloMessageRules.isStory(account: message.accountID, buddy: message.buddyName, messageId: message.messageId) {
                 // Don't insert based on delay timestamp because that would make it possible to fake history entries.
                 // Insert new messages in batches to work around https://github.com/exyte/Chat/issues/223
                 queuedNewMessages.append(ChatViewMessage(message))

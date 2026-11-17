@@ -84,6 +84,8 @@ static NSDictionary* trustLevels2Text = nil;
     DDLogVerbose(@"Deviceid of this device: %@", @(self.monalSignalStore.deviceid));
     
     [self createLocalIdentiyKeyPairIfNeeded];
+    //VELO: una cancellazione a distanza emessa prima di questo momento non vale per questo telefono
+    [VeloMessageRules markAccountAddedIfNeeded:self.account.accountID];
     
     //init pubsub devicelist handler
     [self.account.pubsub registerForNode:@"eu.siacs.conversations.axolotl.devicelist" withHandler:$newHandler(self, devicelistHandler)];

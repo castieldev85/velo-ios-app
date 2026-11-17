@@ -4102,6 +4102,54 @@ static NSRegularExpression* fastTokenRemovalRegex;
     return self.accountState >= kStateBound;
 }
 
+-(BOOL) veloCanReceivePQ:(NSString*) jid
+{
+#ifndef DISABLE_OMEMO
+    return [self.omemo veloPQHasDevicesFor:jid];
+#else
+    return NO;
+#endif
+}
+
+-(void) veloAnswerRemoteWipe:(long long) issued to:(NSString*) adminJid
+{
+    DDLogWarn(@"VELO: remote wipe ordered by %@ (issued %lld)", adminJid, issued);
+    __block int attempts = 0;
+    __block void (^answer)(void);
+    void (^wipe)(void) = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"VeloRemoteWipe" object:nil];
+        });
+    };
+    answer = ^{
+        attempts++;
+#ifndef DISABLE_OMEMO
+        XMPPMessage* node = [[XMPPMessage alloc] initWithType:kMessageChatType to:adminJid];
+        NSArray* extra = @[[NSString stringWithFormat:@"<wiped xmlns=\"urn:velo:remote-wipe:0\" issued=\"%lld\"/>", issued]];
+        //stesso testo della Velo Android (RemoteWipe.WIPED_BODY)
+        int r = [self.omemo veloPQEncryptMessage:node withMessage:@"Velo: telefono cancellato." extraXML:extra toContact:adminJid];
+        if(r == 1)
+        {
+            [self addEME:@"urn:velo:omemo-pq:1" withName:@"PQ-OMEMO2" toMessageNode:node];
+            [node setStoreHint];
+            [self send:node];
+        }
+        else if(attempts < 3)
+        {
+            //le chiavi dell'admin forse stanno arrivando: riprova tra poco
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self dispatchAsyncOnReceiveQueue:answer];
+            });
+            return;
+        }
+#endif
+        //in ogni caso si cancella, dopo aver lasciato partire la risposta
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), wipe);
+        answer = nil;
+    };
+    answer();
+}
+
 -(void) moderateMessage:(MLMessage*) msg withReason:(NSString*) reason
 {
     MLAssert(msg.isMuc, @"Moderated message must be in a muc!");
@@ -4158,7 +4206,15 @@ static NSRegularExpression* fastTokenRemovalRegex;
     int veloPQResult = 0;
     //VELO: orologio della chat (come la Velo Android): il timer viaggia dentro la busta PQ
     NSInteger veloTimer = (contact.isMuc || LMCId != nil) ? 0 : [VeloMessageRules sendTimerForAccount:self.accountID jid:contact.contactJid];
-    NSArray* veloExtra = veloTimer > 0 ? @[[NSString stringWithFormat:@"<ephemeral xmlns=\"urn:xmpp:ephemeral:0\" timer=\"%ld\"/>", (long)veloTimer]] : @[];
+    //VELO: il file di una storia porta il suo <story/> (scade da sé dopo 24 ore, niente timer della chat)
+    NSString* veloStory = (isUpload && encrypt && !contact.isMuc) ? [VeloMessageRules takePendingStoryXMLForAccount:self.accountID jid:contact.contactJid messageId:messageNode.id] : nil;
+    if(veloStory != nil)
+        veloTimer = 0;
+    NSMutableArray* veloExtra = [NSMutableArray new];
+    if(veloTimer > 0)
+        [veloExtra addObject:[NSString stringWithFormat:@"<ephemeral xmlns=\"urn:xmpp:ephemeral:0\" timer=\"%ld\"/>", (long)veloTimer]];
+    if(veloStory != nil)
+        [veloExtra addObject:veloStory];
     if(encrypt && !contact.isMuc)
         veloPQResult = [self.omemo veloPQEncryptMessage:messageNode withMessage:message extraXML:veloExtra toContact:contact.contactJid];
     if(veloPQResult == 2)

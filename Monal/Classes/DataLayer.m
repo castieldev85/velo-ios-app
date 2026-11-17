@@ -1859,6 +1859,16 @@ static NSDateFormatter* dbFormatter;
     return historyId;
 }
 
+-(MLMessage* _Nullable) veloMessageForMessageId:(NSString*) messageId withBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID
+{
+    NSNumber* historyId = [self.db idReadTransaction:^{
+        return [self.db executeScalar:@"SELECT message_history_id FROM message_history WHERE account_id=? AND buddy_name=? AND messageid=? ORDER BY message_history_id DESC LIMIT 1;" andArguments:@[accountID, buddy, messageId]];
+    }];
+    if(historyId == nil || ![historyId isKindOfClass:[NSNumber class]])
+        return nil;
+    return [MLMessage createMessageFromHistoryID:historyId];
+}
+
 -(void) veloClearMessagesWithBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID before:(NSDate*) before
 {
     NSString* beforeString = [dbFormatter stringFromDate:before];

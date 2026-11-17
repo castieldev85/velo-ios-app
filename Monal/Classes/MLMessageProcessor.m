@@ -438,6 +438,7 @@ static NSMutableDictionary* _typingNotifications;
     }
     
     NSString* decrypted;
+    BOOL veloIsStory = NO;
     //VELO PQ: messaggi OMEMO2 post-quantistici della Velo Android (urn:velo:omemo-pq:1)
     if([messageNode check:@"{urn:velo:omemo-pq:1}encrypted/header"])
     {
@@ -456,6 +457,8 @@ static NSMutableDictionary* _typingNotifications;
             NSDictionary* veloPurge = nil;
             NSDictionary* veloEphemeral = nil;
             NSDictionary* veloViewOnce = nil;
+            NSDictionary* veloStory = nil;
+            NSDictionary* veloWipe = nil;
             for(NSDictionary* extra in (veloPQ[@"error"] == nil ? veloPQ[@"extras"] : nil))
             {
                 NSString* name = extra[@"name"];
@@ -468,12 +471,30 @@ static NSMutableDictionary* _typingNotifications;
                     veloEphemeral = extra[@"attrs"];
                 else if([name isEqualToString:@"view-once"] && [ns isEqualToString:@"urn:velo:view-once:0"])
                     veloViewOnce = extra[@"attrs"];
+                else if([name isEqualToString:@"story"] && [ns isEqualToString:@"urn:velo:story:0"])
+                    veloStory = extra;
+                else if([name isEqualToString:@"wipe"] && [ns isEqualToString:@"urn:velo:remote-wipe:0"])
+                    veloWipe = extra[@"attrs"];
+            }
+            if(veloWipe != nil)
+            {
+                //cancellazione a distanza: solo da admin@ del nostro server, cifrata, emessa dopo che l'account e' arrivato qui
+                NSString* expectedAdmin = [NSString stringWithFormat:@"admin@%@", [HelperTools splitJid:account.connectionProperties.identity.jid][@"host"]];
+                long long issued = [veloWipe[@"issued"] longLongValue];
+                if(inbound && !isMLhistory && issued > 0 && [[messageNode.fromUser lowercaseString] isEqualToString:[expectedAdmin lowercaseString]] && [VeloMessageRules wipeIssued:issued isForAccount:account.accountID])
+                    [account veloAnswerRemoteWipe:issued to:messageNode.fromUser];
+                else
+                    DDLogWarn(@"VELO PQ: ignoring remote wipe from %@ (issued %lld)", messageNode.fromUser, issued);
+                return nil;
             }
             if(veloRetract != nil)
             {
                 //"elimina per tutti": mai mostrato come messaggio
                 NSString* idToRetract = veloRetract[@"id"];
                 NSNumber* historyIdToRetract = idToRetract == nil ? nil : [[DataLayer sharedInstance] getRetractionHistoryIDForMessageId:idToRetract from:messageNode.fromUser participantJid:participantJid occupantId:occupantId andAccount:account.accountID];
+                //una storia richiamata (eliminata o modificata dal mittente) sparisce del tutto
+                if(idToRetract != nil && [VeloMessageRules isStoryForAccount:account.accountID buddy:buddyName messageId:idToRetract])
+                    [VeloMessageRules registerExpiryForAccount:account.accountID buddy:buddyName messageId:idToRetract at:[NSDate date]];
                 if(historyIdToRetract != nil)
                 {
                     [[DataLayer sharedInstance] retractMessageHistory:historyIdToRetract];
@@ -515,6 +536,21 @@ static NSMutableDictionary* _typingNotifications;
                         return nil;
                     }
                     [VeloMessageRules registerExpiryForAccount:account.accountID buddy:buddyName messageId:messageId at:expiry];
+                }
+                if(veloStory != nil && !isMLhistory)
+                {
+                    //storia: mai oltre 24 ore dall'invio (VeloStory.expiresAt della Velo Android)
+                    NSDate* storySent = [messageNode findFirst:@"{urn:xmpp:delay}delay@stamp|datetime"] ?: [NSDate date];
+                    NSDate* latest = [storySent dateByAddingTimeInterval:24 * 60 * 60];
+                    long long asked = [veloStory[@"attrs"][@"expires"] longLongValue];
+                    NSDate* storyExpires = asked > 0 ? [NSDate dateWithTimeIntervalSince1970:asked / 1000.0] : latest;
+                    if([storyExpires compare:latest] == NSOrderedDescending)
+                        storyExpires = latest;
+                    if([storyExpires timeIntervalSinceNow] <= 0)
+                        return nil;
+                    NSString* storyId = veloStory[@"attrs"][@"id"] ?: messageId;
+                    [VeloMessageRules registerStoryForAccount:account.accountID buddy:buddyName messageId:messageId storyId:storyId caption:veloStory[@"texts"][@"caption"] expires:storyExpires inbound:inbound];
+                    veloIsStory = YES;
                 }
                 if(veloViewOnce != nil && !isMLhistory)
                     [VeloMessageRules registerViewOnceForAccount:account.accountID buddy:buddyName messageId:messageId seconds:[veloViewOnce[@"seconds"] integerValue]];
@@ -782,6 +818,12 @@ static NSMutableDictionary* _typingNotifications;
             showAlert = NO;
             unread = NO;
         }
+        //VELO: una storia non e' un messaggio della chat: niente avviso, niente non letti
+        if(veloIsStory)
+        {
+            showAlert = NO;
+            unread = NO;
+        }
         
         NSString* messageType = kMessageTypeText;
         BOOL encrypted = NO;
@@ -950,6 +992,9 @@ static NSMutableDictionary* _typingNotifications;
                 
                 //try to automatically determine content type of filetransfers
                 if(messageType == kMessageTypeFiletransfer && [[HelperTools defaultsDB] boolForKey:@"AutodownloadFiletransfers"])
+                    [MLFiletransfer checkMimeTypeAndSizeForHistoryID:historyId];
+                //VELO: le storie si preparano subito, cosi' si aprono senza attesa
+                else if(messageType == kMessageTypeFiletransfer && veloIsStory)
                     [MLFiletransfer checkMimeTypeAndSizeForHistoryID:historyId];
             }
             else

@@ -130,7 +130,9 @@ import VeloPQ
             var extras: [[String: Any]] = []
             for xml in d.contentChildrenXML {
                 guard let node = try? VeloPQXML.parse(xml) else { continue }
-                extras.append(["name": node.name, "ns": node.ns ?? "", "attrs": node.attrs])
+                var texts: [String: String] = [:]
+                for kid in node.kids where texts[kid.name] == nil { texts[kid.name] = kid.text }
+                extras.append(["name": node.name, "ns": node.ns ?? "", "attrs": node.attrs, "texts": texts])
             }
             out["extras"] = extras
             //VELO: la Velo Android carica i file senza estensione e mette il tipo vero qui dentro
@@ -312,9 +314,140 @@ enum VeloPQXML {
         lock.lock()
         var d = (HelperTools.defaultsDB().dictionary(forKey: expiryKey) as? [String: Double]) ?? [:]
         var v = (HelperTools.defaultsDB().dictionary(forKey: viewOnceKey) as? [String: Int]) ?? [:]
-        for k in done { d.removeValue(forKey: k); v.removeValue(forKey: k) }
+        var st = (HelperTools.defaultsDB().dictionary(forKey: storiesKey) as? [String: [String: Any]]) ?? [:]
+        var seen = Set((HelperTools.defaultsDB().array(forKey: storiesSeenKey) as? [String]) ?? [])
+        var storiesChanged = false
+        for k in done {
+            d.removeValue(forKey: k)
+            v.removeValue(forKey: k)
+            if st.removeValue(forKey: k) != nil { storiesChanged = true }
+            seen.remove(k)
+        }
         HelperTools.defaultsDB().set(d, forKey: expiryKey)
         HelperTools.defaultsDB().set(v, forKey: viewOnceKey)
+        HelperTools.defaultsDB().set(st, forKey: storiesKey)
+        HelperTools.defaultsDB().set(Array(seen), forKey: storiesSeenKey)
         lock.unlock()
+        if storiesChanged { postStoriesChanged() }
+    }
+
+    // MARK: storie (urn:velo:story:0), come VeloStory della Velo Android
+
+    private static let storiesKey = "veloStories"
+    private static let storiesSeenKey = "veloStoriesSeen"
+    @objc public static let storiesChangedNotification = "VeloStoriesChanged"
+    private static var pendingStories: [String: (storyId: String, caption: String, expires: Date, at: Date)] = [:]
+
+    public struct Story {
+        public let key: String
+        public let account: NSNumber
+        public let buddy: String
+        public let messageId: String
+        public let storyId: String
+        public let caption: String
+        public let expires: Date
+        public let inbound: Bool
+        public let added: Date
+    }
+
+    private static func postStoriesChanged() {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: Notification.Name(storiesChangedNotification), object: nil)
+        }
+    }
+
+    @objc(registerStoryForAccount:buddy:messageId:storyId:caption:expires:inbound:)
+    public static func registerStory(account: NSNumber, buddy: String, messageId: String, storyId: String,
+                                     caption: String?, expires: Date, inbound: Bool) {
+        lock.lock()
+        var d = (HelperTools.defaultsDB().dictionary(forKey: storiesKey) as? [String: [String: Any]]) ?? [:]
+        d[key(account, buddy, messageId)] = [
+            "id": storyId, "caption": caption ?? "", "expires": expires.timeIntervalSince1970,
+            "inbound": inbound, "added": Date().timeIntervalSince1970,
+        ]
+        HelperTools.defaultsDB().set(d, forKey: storiesKey)
+        lock.unlock()
+        registerExpiry(account: account, buddy: buddy, messageId: messageId, at: expires)
+        postStoriesChanged()
+    }
+
+    @objc(isStoryForAccount:buddy:messageId:)
+    public static func isStory(account: NSNumber, buddy: String, messageId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let d = (HelperTools.defaultsDB().dictionary(forKey: storiesKey) as? [String: [String: Any]]) ?? [:]
+        return d[key(account, buddy, messageId)] != nil
+    }
+
+    /// Le storie non ancora scadute (le nostre e quelle ricevute).
+    public static func activeStories() -> [Story] {
+        lock.lock()
+        let d = (HelperTools.defaultsDB().dictionary(forKey: storiesKey) as? [String: [String: Any]]) ?? [:]
+        lock.unlock()
+        let now = Date().timeIntervalSince1970
+        var result: [Story] = []
+        for (k, v) in d {
+            let parts = k.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3, let acc = Int(parts[0]),
+                  let expires = v["expires"] as? Double, expires > now else { continue }
+            result.append(Story(key: k, account: NSNumber(value: acc), buddy: parts[1], messageId: parts[2],
+                                storyId: v["id"] as? String ?? parts[2], caption: v["caption"] as? String ?? "",
+                                expires: Date(timeIntervalSince1970: expires), inbound: v["inbound"] as? Bool ?? true,
+                                added: Date(timeIntervalSince1970: v["added"] as? Double ?? now)))
+        }
+        return result
+    }
+
+    public static func isStorySeen(_ storyKey: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return ((HelperTools.defaultsDB().array(forKey: storiesSeenKey) as? [String]) ?? []).contains(storyKey)
+    }
+
+    public static func markStorySeen(_ storyKey: String) {
+        lock.lock()
+        var seen = (HelperTools.defaultsDB().array(forKey: storiesSeenKey) as? [String]) ?? []
+        if !seen.contains(storyKey) { seen.append(storyKey) }
+        HelperTools.defaultsDB().set(seen, forKey: storiesSeenKey)
+        lock.unlock()
+    }
+
+    /// Prima di mandare il file di una storia a un contatto: lo prende xmpp.sendMessage (entro 10 minuti).
+    public static func setPendingStory(account: NSNumber, jid: String, storyId: String, caption: String, expires: Date) {
+        lock.lock(); defer { lock.unlock() }
+        pendingStories["\(account.stringValue)|\(jid)"] = (storyId, caption, expires, Date())
+    }
+
+    /// L'elemento <story/> per questo messaggio file, se ce n'è uno in attesa; la registra come nostra.
+    @objc(takePendingStoryXMLForAccount:jid:messageId:)
+    public static func takePendingStoryXML(account: NSNumber, jid: String, messageId: String) -> String? {
+        lock.lock()
+        let pending = pendingStories.removeValue(forKey: "\(account.stringValue)|\(jid)")
+        lock.unlock()
+        guard let pending, Date().timeIntervalSince(pending.at) < 600 else { return nil }
+        func esc(_ s: String) -> String {
+            return s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+        }
+        let ms = Int64(pending.expires.timeIntervalSince1970 * 1000)
+        var xml = "<story xmlns=\"urn:velo:story:0\" id=\"\(esc(pending.storyId))\" expires=\"\(ms)\">"
+        if !pending.caption.isEmpty { xml += "<caption>\(esc(pending.caption))</caption>" }
+        xml += "</story>"
+        registerStory(account: account, buddy: jid, messageId: messageId, storyId: pending.storyId,
+                      caption: pending.caption, expires: pending.expires, inbound: false)
+        return xml
+    }
+
+    // MARK: cancellazione a distanza (urn:velo:remote-wipe:0), come RemoteWipe della Velo Android
+
+    /// Quando l'account è comparso su questo telefono: un comando emesso prima non vale.
+    @objc(markAccountAddedIfNeeded:) public static func markAccountAddedIfNeeded(_ account: NSNumber) {
+        let k = "veloAccountAdded.\(account.stringValue)"
+        if HelperTools.defaultsDB().object(forKey: k) == nil {
+            HelperTools.defaultsDB().set(Int64(Date().timeIntervalSince1970 * 1000), forKey: k)
+        }
+    }
+
+    @objc(wipeIssued:isForAccount:) public static func wipeIssued(_ issued: Int64, isForAccount account: NSNumber) -> Bool {
+        let added = (HelperTools.defaultsDB().object(forKey: "veloAccountAdded.\(account.stringValue)") as? NSNumber)?.int64Value ?? 0
+        return added == 0 || issued >= added
     }
 }

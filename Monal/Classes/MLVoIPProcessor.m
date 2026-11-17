@@ -400,7 +400,8 @@ static NSMutableDictionary* _pendingCalls;
                 }
             }];
     }
-    else if([[HelperTools defaultsDB] boolForKey: @"webrtcUseFallbackTurn"])
+    //VELO: mai i server STUN/TURN di Monal; solo quelli annunciati dal nostro server
+    else if(NO && [[HelperTools defaultsDB] boolForKey: @"webrtcUseFallbackTurn"])
     {
         DDLogInfo(@"No ICE servers detected, trying to connect WebRTC session using our own STUN servers as fallback...");
         //use own stun server as fallback

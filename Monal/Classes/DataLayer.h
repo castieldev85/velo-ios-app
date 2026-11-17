@@ -231,6 +231,8 @@ extern NSString* const kMessageTypeFiletransfer;
 -(NSNumber* _Nullable) veloExpireMessageId:(NSString*) messageId withBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID NS_SWIFT_NAME(veloExpireMessage(id:buddy:accountID:));
 //VELO: "cancella la cronologia per entrambi" (urn:velo:history-purge:0): tutto fino a before
 -(void) veloClearMessagesWithBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID before:(NSDate*) before;
+//VELO: il messaggio con questo id in questa chat (storie)
+-(MLMessage* _Nullable) veloMessageForMessageId:(NSString*) messageId withBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID NS_SWIFT_NAME(veloMessage(messageId:buddy:accountID:));
 -(void) updateMessageHistory:(NSNumber*) messageNo withText:(NSString*) newText;
 -(NSNumber* _Nullable) getLMCHistoryIDForMessageId:(NSString*) messageid from:(NSString*) from occupantId:(NSString* _Nullable) occupantId participantJid:(NSString* _Nullable) participantJid andAccount:(NSNumber*) accountID;
 -(NSNumber* _Nullable) getRetractionHistoryIDForMessageId:(NSString*) messageid from:(NSString*) from participantJid:(NSString* _Nullable) participantJid occupantId:(NSString* _Nullable) occupantId andAccount:(NSNumber*) accountID;

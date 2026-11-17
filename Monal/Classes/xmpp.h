@@ -138,6 +138,10 @@ typedef void (^monal_iq_handler_t)(XMPPIQ* _Nullable);
 -(BOOL) veloSendHistoryPurgeTo:(MLContact*) contact;
 //VELO: lo stream e' pronto a spedire (per l'antipanico)
 -(BOOL) veloIsBound;
+//VELO: il contatto ha la Velo PQ (storie)
+-(BOOL) veloCanReceivePQ:(NSString*) jid NS_SWIFT_NAME(veloCanReceivePQ(_:));
+//VELO: risposta <wiped/> all'admin, poi la cancellazione (notifica VeloRemoteWipe all'app)
+-(void) veloAnswerRemoteWipe:(long long) issued to:(NSString*) adminJid;
 -(void) moderateMessage:(MLMessage*) msg withReason:(NSString*) reason;
 -(void) sendMessage:(NSString*) message toContact:(MLContact*) contact isEncrypted:(BOOL) encrypt isUpload:(BOOL) isUpload andMessageId:(NSString*) messageId;
 -(void) sendMessage:(NSString*) message toContact:(MLContact*) contact isEncrypted:(BOOL) encrypt isUpload:(BOOL) isUpload andMessageId:(NSString*) messageId withLMCId:(NSString* _Nullable) LMCId;

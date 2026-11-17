@@ -300,6 +300,10 @@ struct VeloLockView: View {
         secureAgainstScreenshots(window)
         NotificationCenter.default.addObserver(self, selector: #selector(captureChanged),
                                                name: UIScreen.capturedDidChangeNotification, object: nil)
+        //cancellazione a distanza ordinata dall'admin del server (RemoteWipe della Velo Android)
+        NotificationCenter.default.addObserver(forName: Notification.Name("VeloRemoteWipe"), object: nil, queue: .main) { _ in
+            VeloWipe.everythingAndExit()
+        }
         needsLock = true
         showLockIfNeeded()
     }
