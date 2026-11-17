@@ -3529,6 +3529,16 @@ a=%@\r\n", mid, candidate];
     return NO;
 }
 
++(NSString*) veloShortJid:(NSString* _Nullable) jid
+{
+    if(jid == nil)
+        return @"";
+    NSRange at = [jid rangeOfString:@"@"];
+    if(at.location == NSNotFound)
+        return [jid containsString:@"."] ? NSLocalizedString(@"Server", @"") : jid;
+    return [jid substringToIndex:at.location];
+}
+
 //VELO: proxy SOCKSv5 verso il Tor dentro l'app; senza ripiego sulla rete diretta (se Tor non c'e', non si esce)
 +(nw_proxy_config_t) veloTorProxy
 {

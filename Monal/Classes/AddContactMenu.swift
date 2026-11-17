@@ -89,8 +89,17 @@ struct AddContactMenu: View {
         return toAdd.isEmpty
     }
     
+    //VELO: come su Android si scrive solo il nome; il dominio e' quello dell'account scelto
+    private var toAddFull: String {
+        if toAdd.contains("@") || selectedAccount < 0 || selectedAccount >= enabledAccounts.count {
+            return toAdd
+        }
+        let host = HelperTools.splitJid(enabledAccounts[selectedAccount].connectionProperties.identity.jid)["host"] ?? ""
+        return host.isEmpty ? toAdd : "\(toAdd)@\(host)"
+    }
+
     private var toAddInvalid: Bool {
-        return toAdd.range(of: AddContactMenu.jidFaultyPattern, options:.regularExpression) == nil
+        return toAddFull.range(of: AddContactMenu.jidFaultyPattern, options:.regularExpression) == nil
     }
 
     func trustFingerprints(_ fingerprints:[NSNumber:Data]?, for jid:String, on account:xmpp) {
@@ -182,13 +191,13 @@ struct AddContactMenu: View {
                     if enabledAccounts.count > 1 {
                         Picker("Use account", selection: $selectedAccount) {
                             ForEach(Array(self.enabledAccounts.enumerated()), id: \.element) { idx, account in
-                                Text(account.connectionProperties.identity.jid).tag(idx)
+                                Text(HelperTools.veloShortJid(account.connectionProperties.identity.jid)).tag(idx)
                             }
                         }
                         .pickerStyle(.menu)
                     }
 
-                    TextField(NSLocalizedString("Contact-, Group- or Channel-Jid", comment: "placeholder when adding jid"), text: $toAdd, onEditingChanged: { isEditingJid = $0 })
+                    TextField("Nome utente", text: $toAdd, onEditingChanged: { isEditingJid = $0 })
                         .textInputAutocapitalization(.never)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
@@ -226,7 +235,7 @@ struct AddContactMenu: View {
                             showAlert = toAddEmptyAlert || toAddInvalidAlert
 
                             if !showAlert {
-                                let jidComponents = HelperTools.splitJid(toAdd)
+                                let jidComponents = HelperTools.splitJid(toAddFull)
                                 if jidComponents["host"] == nil || jidComponents["host"]!.isEmpty {
                                     errorAlert(title: Text("Error"), message: Text("Something went wrong while parsing your input..."))
                                     showAlert = true

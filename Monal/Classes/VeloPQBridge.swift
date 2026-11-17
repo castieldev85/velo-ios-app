@@ -122,6 +122,18 @@ import VeloPQ
             }
             var out: [String: Any] = ["prekey": d.wasPreKey, "elements": d.otherElementNames]
             if let b = d.body { out["body"] = b }
+            //VELO: la Velo Android carica i file senza estensione e mette il tipo vero qui dentro
+            for xml in d.contentChildrenXML {
+                guard let node = try? VeloPQXML.parse(xml), node.name == "file-sharing",
+                      let file = node.firstChild(named: "file") else { continue }
+                if let type = file.firstChild(named: "media-type")?.text.trimmingCharacters(in: .whitespacesAndNewlines), !type.isEmpty {
+                    out["mediaType"] = type
+                }
+                if let name = file.firstChild(named: "name")?.text, !name.isEmpty {
+                    out["fileName"] = name
+                }
+                break
+            }
             return out
         } catch {
             DDLogError("VELO PQ: decifratura da \(senderJid) fallita: \(error)")

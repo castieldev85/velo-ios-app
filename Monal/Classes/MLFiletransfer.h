@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 @class xmpp;
 
 @interface MLFiletransfer : NSObject<NSURLSessionDownloadDelegate>
+//VELO: tipo del file preso dalla busta cifrata (la Velo Android carica senza estensione)
++(void) veloRememberMimeType:(NSString*) mimeType forUrl:(NSString*) url;
 @property (class, readonly) BOOL isIdle;
 
 +(BOOL) isIdle;

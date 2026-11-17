@@ -1228,7 +1228,7 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
             if(![notification.userInfo[@"isSevere"] boolValue])
                 DDLogError(@"Minor XMPP Error(%@): %@", xmppAccount.connectionProperties.identity.jid, notification.userInfo[@"message"]);
             FloatingNotificationBanner* banner = [[MonalFloatingNotificationBanner alloc]
-                initWithTitle:xmppAccount.connectionProperties.identity.jid
+                initWithTitle:[HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid]
                 subtitle:notification.userInfo[@"message"]
                 style:([notification.userInfo[@"isSevere"] boolValue] ? BannerStyleDanger : BannerStyleWarning)
                 colors:nil

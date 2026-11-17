@@ -827,7 +827,8 @@ static BOOL _dnssecWarningDisplayed;
         prependToViewQueue((^(PMKResolver resolve) {
             if(![_mamWarningDisplayed containsObject:accountID] && account.accountState >= kStateInitStarted && account.connectionProperties.accountDiscoDone)
             {
-                if(![account.connectionProperties.accountDiscoFeatures containsObject:@"urn:xmpp:mam:2"])
+                //VELO: i server Velo tengono MAM spento per scelta (niente archivio dei messaggi sul server)
+                if(NO && ![account.connectionProperties.accountDiscoFeatures containsObject:@"urn:xmpp:mam:2"])
                 {
                     DDLogDebug(@"Showing MAM not supported warning...");
                     UIAlertController* messageAlert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:NSLocalizedString(@"Account %@", @""), account.connectionProperties.identity.jid] message:NSLocalizedString(@"Your server does not support MAM (XEP-0313). That means you could frequently miss incoming messages!! You should switch your server or talk to the server admin to enable this!", @"") preferredStyle:UIAlertControllerStyleAlert];

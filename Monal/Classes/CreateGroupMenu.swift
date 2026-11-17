@@ -55,7 +55,7 @@ struct CreateGroupMenu: View {
                     if enabledAccounts.count > 1 {
                         Picker(selection: $selectedAccount, label: Text("Use account")) {
                             ForEach(Array(self.enabledAccounts.enumerated()), id: \.element) { idx, account in
-                                Text(account.connectionProperties.identity.jid).tag(account as xmpp?)
+                                Text(HelperTools.veloShortJid(account.connectionProperties.identity.jid)).tag(account as xmpp?)
                             }
                         }
                         .pickerStyle(.menu)

@@ -453,7 +453,11 @@ static NSMutableDictionary* _typingNotifications;
             if(veloPQ[@"error"] != nil)
                 decrypted = [NSString stringWithFormat:@"Messaggio post-quantistico non decifrato: %@", veloPQ[@"error"]];
             else if(veloPQ[@"body"] != nil)
+            {
                 decrypted = veloPQ[@"body"];
+                if(veloPQ[@"mediaType"] != nil)
+                    [MLFiletransfer veloRememberMimeType:veloPQ[@"mediaType"] forUrl:[decrypted stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]];
+            }
             else
             {
                 DDLogInfo(@"VELO PQ: metadata-only/session message, nothing to show (elements: %@)", veloPQ[@"elements"]);

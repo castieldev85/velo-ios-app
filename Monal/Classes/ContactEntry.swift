@@ -63,7 +63,7 @@ struct ContactEntry<AdditionalContent: View>: View {
                         }
                     }
                     additionalContent()
-                    Text(contact.contactJid as String)
+                    Text(HelperTools.veloShortJid(contact.contactJid as String))
                         .foregroundColor(Color(UIColor.secondaryLabel))
                         .font(.footnote)
                 }

@@ -12,7 +12,7 @@ struct ContactRequestsMenuEntry: View {
     
     var body: some View {
         HStack {
-            Text(contact.contactJid)
+            Text(HelperTools.veloShortJid(contact.contactJid))
                 .foregroundColor(.secondary)
             
             Spacer()
@@ -102,7 +102,7 @@ struct ContactRequestsMenu: View {
                                 ContactRequestsMenuEntry(contact: requests[idx])
                             }
                         } else {
-                            Section(header: Text("Account: \(account.connectionProperties.identity.jid)")) {
+                            Section(header: Text("Account: \(HelperTools.veloShortJid(account.connectionProperties.identity.jid))")) {
                                 ForEach(requests.indices, id: \.self) { idx in
                                     ContactRequestsMenuEntry(contact: requests[idx])
                                 }

@@ -196,6 +196,14 @@ static NSMutableSet* _currentlyTransfering;
                     mimeType = [self getMimeTypeOfOriginalFile:urlComponents.path];
             }
             
+            //VELO: tipo arrivato nella busta cifrata (file senza estensione della Velo Android)
+            if(!mimeType || [mimeType isEqualToString:@"application/octet-stream"])
+            {
+                NSString* veloType = [[HelperTools defaultsDB] dictionaryForKey:@"veloMediaTypes"][url];
+                if(veloType != nil)
+                    mimeType = veloType;
+            }
+
             //make sure we *always* have a mime type
             if(!mimeType)
                 mimeType = @"application/octet-stream";
@@ -778,6 +786,19 @@ $$
     NSString* urlPart = [HelperTools hexadecimalString:[HelperTools sha256:[url dataUsingEncoding:NSUTF8StringEncoding]]];
     NSString* mimePart = [HelperTools hexadecimalString:[mimeType dataUsingEncoding:NSUTF8StringEncoding]];
     return [_documentCacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@", urlPart, mimePart]];
+}
+
++(void) veloRememberMimeType:(NSString*) mimeType forUrl:(NSString*) url
+{
+    NSString* canonical = [self genCanonicalUrl:url];
+    if(canonical.length == 0 || mimeType.length == 0)
+        return;
+    NSMutableDictionary* types = [[[HelperTools defaultsDB] dictionaryForKey:@"veloMediaTypes"] mutableCopy] ?: [NSMutableDictionary new];
+    types[canonical] = mimeType;
+    //tetto: non serve ricordare per sempre ogni file
+    while(types.count > 500)
+        [types removeObjectForKey:[[types allKeys] firstObject]];
+    [[HelperTools defaultsDB] setObject:types forKey:@"veloMediaTypes"];
 }
 
 +(NSString*) genCanonicalUrl:(NSString*) url

@@ -415,7 +415,7 @@ struct OmemoKeysForChatView: View {
                             }
                         }, label: {
                             HStack {
-                                Text("Keys of \(contact.obj.contactJid)")
+                                Text("Keys of \(HelperTools.veloShortJid(contact.obj.contactJid))")
                                 Spacer()
                                 Button(action: {
                                     self.selectedContact = contact

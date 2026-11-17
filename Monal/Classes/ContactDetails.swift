@@ -179,7 +179,7 @@ struct ContactDetails: View {
                         UIAccessibility.post(notification: .announcement, argument: "JID Copied")
                     } label: {
                         HStack {
-                            Text(contact.contactJid as String)
+                            Text(HelperTools.veloShortJid(contact.contactJid as String))
                             
                             Image(systemName: "doc.on.doc")
                                 .foregroundColor(.primary)
@@ -203,7 +203,7 @@ struct ContactDetails: View {
                     
                     //only show account jid if more than one is configured
                     if MLXMPPManager.sharedInstance().connectedXMPP.count > 1 && !contact.isSelf {
-                        Text("Account: \(account.connectionProperties.identity.jid)")
+                        Text("Account: \(HelperTools.veloShortJid(account.connectionProperties.identity.jid))")
                     }
                     
                     if !contact.isSelf && !contact.isMuc {
