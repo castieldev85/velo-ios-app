@@ -1,0 +1,788 @@
+//
+//  AVCallUI.swift
+//  Monal
+//
+//  Created by Thilo Molitor on 20.12.22.
+//  Copyright © 2021 Monal.im. All rights reserved.
+//
+import WebRTC
+import AVFoundation
+import CallKit
+import AVKit
+
+struct VideoView: UIViewRepresentable {
+    var renderer: RTCMTLVideoView
+ 
+    init(renderer: RTCMTLVideoView) {
+        self.renderer = renderer
+    }
+    
+    func makeUIView(context: Context) -> RTCMTLVideoView {
+        return self.renderer
+    }
+ 
+    func updateUIView(_ renderer: RTCMTLVideoView, context: Context) {
+        DDLogDebug("updateUIView called...")
+        //do nothing
+    }
+}
+
+final class VideoSizeObserver: NSObject, ObservableObject, RTCVideoViewDelegate {
+    @Published var aspectRatio: CGFloat = 16.0 / 9.0
+
+    func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
+        guard size.height > 0 else { return }
+        DispatchQueue.main.async {
+            self.aspectRatio = size.width / size.height
+        }
+    }
+}
+
+struct RTCVideoContainerView: UIViewRepresentable {
+    let videoView: RTCMTLVideoView
+    @ObservedObject var observer: VideoSizeObserver
+
+    func makeUIView(context: Context) -> RTCMTLVideoView {
+        videoView.videoContentMode = .scaleAspectFill
+        videoView.clipsToBounds = true
+        videoView.delegate = observer
+        return videoView
+    }
+
+    func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {}
+}
+
+struct DraggablePiPVideoView<StackedView: View>: View {
+
+    let videoView: RTCMTLVideoView
+    let topPadding: CGFloat
+    let rightPadding: CGFloat
+    @Binding var controlsVisible: Bool
+    let stackedView: () -> StackedView
+    let onDoubleTap: () -> Void
+
+    @StateObject private var observer = VideoSizeObserver()
+    @State private var offset: CGSize = .zero
+    @GestureState private var dragOffset: CGSize = .zero
+    
+    init(
+        videoView: RTCMTLVideoView,
+        topPadding: CGFloat,
+        rightPadding: CGFloat,
+        controlsVisible: Binding<Bool>,
+        @ViewBuilder stackedView: @escaping () -> StackedView,
+        onDoubleTap: @escaping () -> Void
+    ) {
+        self.videoView = videoView
+        self.topPadding = topPadding
+        self.rightPadding = rightPadding
+        self._controlsVisible = controlsVisible
+        self.stackedView = stackedView
+        self.onDoubleTap = onDoubleTap
+    }
+    
+    var body: some View {
+        //size of our video
+        let width = UIScreen.main.bounds.size.width / 3.0
+        let height = width / observer.aspectRatio
+
+        let initialX = (UIScreen.main.bounds.size.width - width) / 2 - rightPadding
+        let initialY = -(UIScreen.main.bounds.size.height - height) / 2 + topPadding
+        
+        //used for clamping
+        let minX = -(UIScreen.main.bounds.size.width + width) / 2 + rightPadding * 2
+        let maxY = (UIScreen.main.bounds.size.height - height) - topPadding * 2
+
+        ZStack {
+            RTCVideoContainerView(
+                videoView: videoView,
+                observer: observer
+            )
+            .aspectRatio(observer.aspectRatio, contentMode: .fit)
+            .frame(width: width)
+            .background(Color.black)
+
+            Group {
+                if controlsVisible {
+                    stackedView()
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
+        .offset(
+            x: initialX + offset.width + dragOffset.width,
+            y: initialY + offset.height + dragOffset.height
+        )
+        .onTapGesture(count: 2, perform: onDoubleTap)
+        .gesture(DragGesture().updating($dragOffset) { value, state, _ in
+            state = value.translation
+        }.onEnded { value in
+            offset.width += value.translation.width
+            offset.height += value.translation.height
+            
+            //clamp values
+            offset.width = max(min(offset.width, 0), minX)
+            offset.height = min(max(offset.height, 0), maxY)
+        })
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: offset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+    }
+}
+
+
+struct AVCallUI: View {
+    @StateObject private var appDelegate: ObservableKVOWrapper<MonalAppDelegate>
+    @StateObject private var call: ObservableKVOWrapper<MLCall>
+    @StateObject private var contact: ObservableKVOWrapper<MLContact>
+    @State private var showMicAlert = false
+    @State private var showSecurityHelpAlert: MLCallEncryptionState? = nil
+    @State private var controlsVisible = true
+    @State private var cameraPosition: AVCaptureDevice.Position = .front
+    @State private var sendingVideo = true
+    @State private var videoRenderingStarted = false
+    
+    //2 times 32px space between buttons and 16px left and right padding of whole button bar
+    private let maxButtonSize = (UIScreen.main.bounds.size.width - 3*32) / 3.0
+    //only 1/3 of the size of our DraggablePiPVideoView, which is 1/3 of the screen width
+    private let maxCameraSwitchButtonSize = (UIScreen.main.bounds.size.width / 3.0) / 3.0
+    @ScaledMetric(relativeTo:.body) private var size32px: CGFloat = 32
+    @ScaledMetric(relativeTo:.body) private var size20px: CGFloat = 20
+    @ScaledMetric(relativeTo:.body) private var size28px: CGFloat = 28
+    @ScaledMetric(relativeTo:.body) private var size64px: CGFloat = 64
+    @ScaledMetric(relativeTo:.body) private var size7px: CGFloat = 7
+    @ScaledMetric(relativeTo:.body) private var size16px: CGFloat = 16
+    @ScaledMetric(relativeTo:.body) private var size100px: CGFloat = 100
+    @ScaledMetric(relativeTo:.body) private var size150px: CGFloat = 150
+    @ScaledMetric(relativeTo:.body) private var size2048px: CGFloat = 2048
+    @ScaledMetric(relativeTo:.body) private var localVideoSizeFactor: CGFloat = 1
+    
+    private var ringingPlayer: AVAudioPlayer!
+    private var busyPlayer: AVAudioPlayer!
+    private var errorPlayer: AVAudioPlayer!
+    private var delegate: SheetDismisserProtocol
+    private var formatter: DateComponentsFormatter
+    private var localRenderer: RTCMTLVideoView
+    private var remoteRenderer: RTCMTLVideoView
+
+    init(delegate: SheetDismisserProtocol, call: MLCall) {
+        _call = StateObject(wrappedValue: ObservableKVOWrapper(call))
+        _contact = StateObject(wrappedValue: ObservableKVOWrapper(call.contact))
+        _appDelegate = StateObject(wrappedValue: ObservableKVOWrapper(UIApplication.shared.delegate as! MonalAppDelegate))
+        self.delegate = delegate
+        self.formatter = DateComponentsFormatter()
+        self.formatter.allowedUnits = [.hour, .minute, .second]
+        self.formatter.unitsStyle = .positional
+        self.formatter.zeroFormattingBehavior = .pad
+        
+        //use the complete screen for remote video
+        self.remoteRenderer = RTCMTLVideoView(frame: UIScreen.main.bounds)
+        self.remoteRenderer.videoContentMode = .scaleAspectFill
+        self.remoteRenderer.clipsToBounds = true
+        
+        self.localRenderer = RTCMTLVideoView(frame: UIScreen.main.bounds)
+        self.localRenderer.videoContentMode = .scaleAspectFill
+        self.localRenderer.clipsToBounds = true
+        
+        self.ringingPlayer = try! AVAudioPlayer(contentsOf:Bundle.main.url(forResource:"ringing", withExtension:"wav", subdirectory:"CallSounds")!)
+        self.busyPlayer = try! AVAudioPlayer(contentsOf:Bundle.main.url(forResource:"busy", withExtension:"wav", subdirectory:"CallSounds")!)
+        self.errorPlayer = try! AVAudioPlayer(contentsOf:Bundle.main.url(forResource:"error", withExtension:"wav", subdirectory:"CallSounds")!)
+/*        
+        _localRendererOffset = State(wrappedValue: CGPoint(
+            x: UIScreen.main.bounds.size.width - (UIScreen.main.bounds.size.width/(5.0/localVideoSizeFactor)/2.0 + 24.0),
+            y: UIScreen.main.bounds.size.height/(5.0/localVideoSizeFactor)/2.0 + 16.0
+        ))*/
+    }
+    
+    func maybeStartRenderer() {
+        if !videoRenderingStarted && MLCallType(rawValue:call.callType) == .video && MLCallState(rawValue:call.state) == .connected {
+            DDLogInfo("Starting local and remote video renderers...")
+            //local video should be displayed as "mirrored", if front camera is used
+            self.localRenderer.transform = CGAffineTransformMakeScale(cameraPosition == .front ? -1.0 : 1.0, 1.0)
+            call.obj.startCaptureLocalVideo(withRenderer: self.localRenderer, andCameraPosition:cameraPosition)
+            call.obj.renderRemoteVideo(withRenderer: self.remoteRenderer)
+            videoRenderingStarted = true
+        }
+    }
+    
+    func stopRenderer() {
+        call.obj.stopCaptureLocalVideo()
+        videoRenderingStarted = false
+    }
+    
+    func handleStateChange(_ state:MLCallState, _ audioState:MLAudioState) {
+        switch state {
+            case .unknown:
+                DDLogDebug("state: unknown")
+                ringingPlayer.stop()
+                busyPlayer.stop()
+                errorPlayer.play()
+            case .discovering:
+                DDLogDebug("state: discovering")
+                ringingPlayer.stop()
+                busyPlayer.stop()
+                errorPlayer.stop()
+            case .ringing:
+                DDLogDebug("state: ringing")
+                busyPlayer.stop()
+                errorPlayer.stop()
+                ringingPlayer.play()
+            case .connecting:
+                DDLogDebug("state: connecting")
+                ringingPlayer.stop()
+                busyPlayer.stop()
+                errorPlayer.stop()
+            case .reconnecting:
+                DDLogDebug("state: reconnecting")
+                ringingPlayer.stop()
+                busyPlayer.stop()
+                errorPlayer.stop()
+            case .connected:
+                DDLogDebug("state: connected")
+                maybeStartRenderer()
+            case .finished:
+                DDLogDebug("state: finished: \(String(describing:call.finishReason as NSNumber))")
+                //check audio state before trying to play anything (if we are still in state .call,
+                //callkit will deactivate this audio session shortly, stopping our players)
+                if audioState == .normal {
+                    switch MLCallFinishReason(rawValue:call.finishReason) {
+                        case .unknown:
+                            DDLogDebug("state: finished: unknown")
+                            ringingPlayer.stop()
+                            busyPlayer.stop()
+                            errorPlayer.stop()
+                        case .connectivityError:
+                            DDLogDebug("state: finished: connectivityError")
+                            ringingPlayer.stop()
+                            busyPlayer.stop()
+                            errorPlayer.play()
+                        case .securityError:
+                            DDLogDebug("state: finished: securityError")
+                            ringingPlayer.stop()
+                            busyPlayer.stop()
+                            errorPlayer.play()
+                        case .unanswered:
+                            DDLogDebug("state: finished: unanswered")
+                            ringingPlayer.stop()
+                            errorPlayer.stop()
+                            busyPlayer.play()
+                        case .retracted:
+                            DDLogDebug("state: finished: retracted")
+                            ringingPlayer.stop()
+                            errorPlayer.stop()
+                            busyPlayer.play()
+                        case .rejected:
+                            DDLogDebug("state: finished: rejected")
+                            ringingPlayer.stop()
+                            errorPlayer.stop()
+                            busyPlayer.play()
+                        case .declined:
+                            DDLogDebug("state: finished: declined")
+                            ringingPlayer.stop()
+                            errorPlayer.stop()
+                            busyPlayer.play()
+                        case .error:
+                            DDLogDebug("state: finished: error")
+                            ringingPlayer.stop()
+                            busyPlayer.stop()
+                            errorPlayer.play()
+//                             case .normal:
+//                             case .answeredElsewhere:
+                        default:
+                            DDLogDebug("state: finished: default")
+                            ringingPlayer.stop()
+                            busyPlayer.stop()
+                            errorPlayer.stop()
+                    }
+                }
+            default:
+                DDLogDebug("state: default")
+        }
+    }
+
+    @ViewBuilder
+    func callDirectionView() -> some View {
+        VStack {
+            Spacer().frame(height: 8)
+            switch MLCallDirection(rawValue:call.direction) {
+                case .incoming:
+                    Image(systemName: "phone.arrow.down.left")
+                        .resizable()
+                        .frame(width: size20px, height: size20px)
+                        .foregroundColor(.primary)
+                case .outgoing:
+                    Image(systemName: "phone.arrow.up.right")
+                        .resizable()
+                        .frame(width: size20px, height: size20px)
+                        .foregroundColor(.primary)
+                default:        //should never be reached
+                    Text("")
+            }
+        }
+    }
+    
+    @ViewBuilder
+    func encryptionStateView() -> some View {
+        VStack {
+            Spacer().frame(height: 8)
+            Button(action: {
+                //show dialog explaining different encryption states
+                self.showSecurityHelpAlert = MLCallEncryptionState(rawValue:call.encryptionState)
+            }, label: {
+                switch MLCallEncryptionState(rawValue:call.encryptionState) {
+                    case .unknown:
+                        Text("")
+                    case .clear:
+                        Spacer().frame(width: 10)
+                        Image(systemName: "xmark.shield.fill")
+                            .resizable()
+                            .frame(width: size20px, height: size20px)
+                            .foregroundColor(.red)
+                    case .toFU:
+                        Spacer().frame(width: 10)
+                        Image(systemName: "checkmark.shield.fill")
+                            .resizable()
+                            .frame(width: size20px, height: size20px)
+                            .foregroundColor(.yellow)
+                    case .trusted:
+                        Spacer().frame(width: 10)
+                        Image(systemName: "checkmark.shield.fill")
+                            .resizable()
+                            .frame(width: size20px, height: size20px)
+                            .foregroundColor(.green)
+                    default:        //should never be reached
+                        Text("")
+                }
+            })
+        }
+    }
+    
+    @ViewBuilder
+    func backToChatView() -> some View {
+        VStack {
+            Spacer().frame(height: 8)
+            Button(action: {
+                if let activeChats = self.appDelegate.obj.activeChats {
+                    //make sure we don't animate anything
+                    activeChats.dismissCompleteViewChain(withAnimation: false) {
+                        activeChats.presentChat(with:self.contact.obj)
+                    }
+                } else {
+                    //self.delegate.dismissWithoutAnimation()
+                    unreachable("active chats should always be accessible from AVCallUI!")
+                }
+            }, label: {
+                Image(systemName: "text.bubble")
+                    .resizable()
+                    .frame(width: size28px, height: size28px)
+                    .foregroundColor(.primary)
+            })
+        }
+    }
+    
+    @ViewBuilder
+    func speakerButtonView() -> some View {
+        Button(action: {
+            call.speaker = !call.speaker
+        }) {
+            Image(systemName: "speaker.wave.2.circle.fill")
+                .resizable()
+                .frame(width: min(size64px, maxButtonSize), height: min(size64px, maxButtonSize))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(call.speaker ? .black : .white, call.speaker ? .white : .black)
+                .shadow(radius: size7px)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+    }
+    
+    @ViewBuilder
+    func endcallButtonView() -> some View {
+        Button(action: {
+            call.obj.end()
+            self.delegate.dismissWithoutAnimation()
+        }) {
+            Image(systemName: "phone.down.circle.fill")
+                .resizable()
+                .frame(width: min(size64px, maxButtonSize), height: min(size64px, maxButtonSize))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .red)
+                .shadow(radius: size7px)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+    }
+    
+    @ViewBuilder
+    func microphoneButtonView() -> some View {
+        Button(action: {
+            call.muted = !call.muted
+        }) {
+            Image(systemName: "mic.slash.circle.fill")
+                .resizable()
+                .frame(width: min(size64px, maxButtonSize), height: min(size64px, maxButtonSize))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(call.muted ? .black : .white, call.muted ? .white : .black)
+                .shadow(radius: size7px)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+    }
+    
+    @ViewBuilder
+    func retryButtonView() -> some View {
+        Button(action: {
+            self.delegate.dismissWithoutAnimation()
+            if let activeChats = self.appDelegate.obj.activeChats {
+                activeChats.call(contact.obj, with:MLCallType(rawValue:call.callType)!)
+            }                            
+        }) {
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .resizable()
+                .frame(width: min(size64px, maxButtonSize), height: min(size64px, maxButtonSize))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .green)
+                .shadow(radius: size7px)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+    }
+    
+    @ViewBuilder
+    func closeButtonView() -> some View {
+        Button(action: {
+            delegate.dismissWithoutAnimation()
+        }) {
+            Image(systemName: "x.circle.fill")
+                .resizable()
+                .frame(width: min(size64px, maxButtonSize), height: min(size64px, maxButtonSize))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .red)
+                .shadow(radius: size7px)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+    }
+    
+    var body: some View {
+        ZStack {
+            Color.background
+                .ignoresSafeArea()
+            
+            if MLCallType(rawValue:call.callType) == .video && MLCallState(rawValue:call.state) == .connected {
+                VideoView(renderer:self.remoteRenderer)
+                    .ignoresSafeArea()
+                
+                DraggablePiPVideoView(
+                    videoView: self.localRenderer,
+                    topPadding: 48,
+                    rightPadding: 20,
+                    controlsVisible: $controlsVisible,
+                    stackedView: {
+                        Button(action: {
+                            if cameraPosition == .front {
+                                cameraPosition = .back
+                            } else {
+                                cameraPosition = .front
+                            }
+                            stopRenderer()
+                            maybeStartRenderer()
+                        }) {
+                            Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                                .resizable()
+                                .frame(width: min(size32px, maxCameraSwitchButtonSize), height: min(size32px, maxCameraSwitchButtonSize))
+                                .foregroundColor(.primary)
+                                //16px is half of 32px --> use the same max constraint for simplicity
+                                .padding(min(size16px, maxCameraSwitchButtonSize/2.0))
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }, onDoubleTap: {
+                        if sendingVideo {
+                            call.obj.hideVideo()
+                        } else {
+                            call.obj.showVideo()
+                        }
+                        sendingVideo = !sendingVideo
+                    }
+                )
+            }
+            
+            if MLCallType(rawValue:call.callType) == .audio ||
+            (MLCallType(rawValue:call.callType) == .video && (MLCallState(rawValue:call.state) != .connected || controlsVisible)) {
+                VStack {
+                    Group {
+                        Spacer().frame(height: 24)
+                        
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .top) {
+                                Spacer().frame(width:20)
+                                callDirectionView()
+                                encryptionStateView()
+                                Spacer()
+                                Text(contact.contactDisplayName as String)
+                                    .font(.largeTitle)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                backToChatView()
+                                Spacer().frame(width:20)
+                            }
+                            
+                           VStack {
+                                HStack(alignment: .top) {
+                                    Spacer().frame(width:20)
+                                    callDirectionView()
+                                    encryptionStateView()
+                                    Spacer()
+                                    backToChatView()
+                                    Spacer().frame(width:20)
+                                }
+                                
+                                Spacer().frame(height: 16)
+                                
+                                HStack(alignment: .top) {
+                                    Spacer().frame(width:20)
+                                    Text(contact.contactDisplayName as String)
+                                        .font(.largeTitle)
+                                        .foregroundColor(.primary)
+                                    Spacer().frame(width:20)
+                                }
+                            }
+                        }
+                        
+                        Spacer().frame(height: 16)
+                        
+                        //this is needed because ObservableKVOWrapper somehow extracts an NSNumber? from it's wrapped object
+                        //which results in a runtime error when trying to cast NSNumber? to MLCallState
+                        switch MLCallState(rawValue:call.state) {
+                            case .discovering:
+                                Text("Discovering devices...")
+                                .bold()
+                                .foregroundColor(.primary)
+                            case .ringing:
+                                Text("Ringing...")
+                                .bold()
+                                .foregroundColor(.primary)
+                            case .connecting:
+                                Text("Connecting...")
+                                .bold()
+                                .foregroundColor(.primary)
+                            case .reconnecting:
+                                Text("Reconnecting...")
+                                .bold()
+                                .foregroundColor(.primary)
+                            case .connected:
+                                Text("Connected: \(formatter.string(from: TimeInterval(call.durationTime as UInt))!)")
+                                .bold()
+                                .foregroundColor(.primary)
+                            case .finished:
+                                switch MLCallFinishReason(rawValue:call.finishReason) {
+                                    case .unknown:
+                                        Text("Call ended for an unknown reason")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .normal:
+                                        if call.wasConnectedOnce {
+                                            Text("Call ended, duration: \(formatter.string(from: TimeInterval(call.durationTime as UInt))!)")
+                                            .bold()
+                                            .foregroundColor(.primary)
+                                        } else {
+                                            Text("Call ended")
+                                            .bold()
+                                            .foregroundColor(.primary)
+                                        }
+                                    case .connectivityError:
+                                        if call.wasConnectedOnce {
+                                            Text("Call ended: connection failed\nDuration: \(formatter.string(from: TimeInterval(call.durationTime as UInt))!)")
+                                            .bold()
+                                            .foregroundColor(.primary)
+                                        } else {
+                                            Text("Call ended: connection failed")
+                                            .bold()
+                                            .foregroundColor(.primary)
+                                        }
+                                    case .securityError:
+                                        Text("Call ended: couldn't establish encryption")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .unanswered:
+                                        Text("Call was not answered")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .answeredElsewhere:
+                                        Text("Call ended: answered with other device")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .retracted:
+                                        //this will only be displayed for timer-induced retractions,
+                                        //reflect that in our text instead of using some generic "hung up"
+                                        //Text("Call ended: hung up")
+                                        Text("Call ended: remote busy")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .rejected:
+                                        Text("Call ended: remote busy")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .declined:
+                                        Text("Call ended: declined")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    case .error:
+                                        Text("Call ended: application error")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                    default:        //should never be reached
+                                        Text("")
+                                }
+                            default:        //should never be reached
+                                Text("")
+                        }
+                        
+                        Spacer().frame(height: 32)
+                        
+                        if MLCallType(rawValue:call.callType) == .audio || MLCallState(rawValue:call.state) != .connected {
+                            Image(uiImage: contact.avatar)
+                                .resizable()
+                                .frame(
+                                    minWidth:       size32px,
+                                    idealWidth:     size150px,
+                                    maxWidth:       size2048px,
+                                    minHeight:      size32px,
+                                    idealHeight:    size150px,
+                                    maxHeight:      size2048px,
+                                    alignment:      .center
+                                )
+                                .scaledToFit()
+                                .shadow(radius: size7px)
+                        }
+                        
+                        Spacer().frame(height: 32)
+                        
+                        Spacer()
+                    }
+                    
+                    if MLCallState(rawValue:call.state) == .finished {
+                        HStack() {
+                            Spacer()
+                            retryButtonView()
+                            Spacer().frame(width: 64)
+                            closeButtonView()
+                            Spacer()
+                        }
+                    } else {
+                        HStack() {
+                            Spacer()
+                            
+                            if MLCallState(rawValue:call.state) == .connected || MLCallState(rawValue:call.state) == .reconnecting {
+                                microphoneButtonView()
+                                Spacer().frame(width: 32)
+                            }
+                            
+                            endcallButtonView()
+                            
+                            if MLCallState(rawValue:call.state) == .connected || MLCallState(rawValue:call.state) == .reconnecting {
+                                Spacer().frame(width: 32)
+                                speakerButtonView()
+                            }
+                            
+                            Spacer()
+                        }
+                    }
+                    
+                    Spacer().frame(height: 24)
+                }
+            }
+        }
+        .onTapGesture(count: 1) {
+            controlsVisible = !controlsVisible
+        }
+        .alert(isPresented: $showMicAlert) {
+            Alert(
+                title: Text("Missing permission"),
+                message: Text("You need to grant microphone access in iOS Settings-> Privacy-> Microphone, if you want that others can hear you."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .richAlert(isPresented:$showSecurityHelpAlert, title:Text("Call security help")) {
+            VStack(alignment: .leading) {
+                HStack {
+                    Image(systemName: "xmark.shield.fill")
+                        .resizable()
+                        .frame(width: size20px, height: size20px)
+                        .foregroundColor(.red)
+                    Spacer().frame(width: 10)
+                    Text("Red x-mark shield:")
+                }.font(Font.body.weight(showSecurityHelpAlert == .clear ? .heavy : .medium))
+                Text("This means your call is encrypted, but the remote party could not be verified using OMEMO encryption.\nYour or the callee's XMPP server could possibly Man-In-The-Middle you.")
+                Spacer().frame(height: 20)
+                
+                HStack {
+                    Image(systemName: "checkmark.shield.fill")
+                        .resizable()
+                        .frame(width: size20px, height: size20px)
+                        .foregroundColor(.yellow)
+                    Spacer().frame(width: 10)
+                    Text("Yellow checkmark shield:")
+                }.font(Font.body.weight(showSecurityHelpAlert == .toFU ? .heavy : .medium))
+                Text("This means your call is encrypted and the remote party was verified using OMEMO encryption.\nBut since you did not manually verify the callee's OMEMO fingerprints, your or the callee's XMPP server could possibly have inserted their own OMEMO keys to Man-In-The-Middle you.")
+                Spacer().frame(height: 20)
+                
+                HStack {
+                    Image(systemName: "checkmark.shield.fill")
+                        .resizable()
+                        .frame(width: size20px, height: size20px)
+                        .foregroundColor(.green)
+                    Spacer().frame(width: 10)
+                    Text("Green checkmark shield:")
+                }.font(Font.body.weight(showSecurityHelpAlert == .trusted ? .heavy : .medium))
+                Text("This means your call is encrypted and the remote party was verified using OMEMO encryption.\nYou manually verified the used OMEMO keys and no Man-In-The-Middle can take place.")
+                Spacer().frame(height: 20)
+            }
+        }
+        .onAppear {
+            //force portrait mode and lock ui there
+            self.appDelegate.obj.orientationLock = .portrait
+            UIApplication.shared.isIdleTimerDisabled = true
+            
+            self.ringingPlayer.numberOfLoops = -1
+            self.busyPlayer.numberOfLoops = 6
+            self.errorPlayer.numberOfLoops = 6
+            
+            //ask for mic permissions
+            AVAudioApplication.requestRecordPermission { granted in
+                if !granted {
+                    showMicAlert = true
+                }
+            }
+            
+            maybeStartRenderer()
+        }
+        .onDisappear {
+            //allow all orientations again
+            self.appDelegate.obj.orientationLock = .all
+            UIApplication.shared.isIdleTimerDisabled = false
+            
+            ringingPlayer.stop()
+            busyPlayer.stop()
+            errorPlayer.stop()
+            
+            if MLCallType(rawValue:call.callType) == .video {
+                stopRenderer()
+            }
+        }
+        .onChange(of: MLCallState(rawValue:call.state)) { oldState, newState in
+            DDLogVerbose("call state changed from \(String(describing: oldState)) to \(String(describing: newState))")
+            handleStateChange(call.obj.state, appDelegate.obj.audioState)
+        }
+        .onChange(of: MLAudioState(rawValue:appDelegate.audioState)) { oldState, newState in
+            DDLogVerbose("audioState changed from \(String(describing: oldState)) to \(String(describing: newState))")
+            handleStateChange(call.obj.state, appDelegate.obj.audioState)
+        }
+    }
+}
+
+struct AVCallUI_Previews: PreviewProvider {
+    static var delegate = SheetDismisserProtocol()
+    static var previews: some View {
+        AVCallUI(delegate:delegate, call:MLCall.makeDummyCall(0))
+    }
+}

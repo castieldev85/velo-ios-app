@@ -1,0 +1,135 @@
+name: Build Velo iOS (IPA non firmato)
+
+# Spike Velo iOS: compila Monal su runner macOS gratuito e produce un IPA
+# NON firmato. La firma la mette Sideloadly con l'Apple ID gratuito al momento
+# dell'installazione sull'iPhone. Si lancia a mano (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Seleziona l'Xcode piu' recente
+        run: |
+          echo "Xcode installati:"; ls -d /Applications/Xcode*.app 2>/dev/null || true
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then LATEST=/Applications/Xcode.app; fi
+          echo "Uso: $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+
+      - name: Tor per iOS (tor.xcframework di iCepa)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p velo-tor && cd velo-tor
+          gh release download 409.16.1 -R iCepa/Tor.framework -p tor.xcframework.zip
+          unzip -q tor.xcframework.zip
+          ls -lh tor.xcframework/ios-arm64/tor.a
+
+      - name: libsignal PQ (ultimo build-libsignal-ios riuscito) + pacchetto VeloSignal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN=$(gh run list -R "$GITHUB_REPOSITORY" --workflow build-libsignal-ios.yml --status success -L 1 --json databaseId -q '.[0].databaseId')
+          echo "Run libsignal: $RUN"
+          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n libsignal-ios -D libsignal-ios
+          ls -la libsignal-ios
+          rm -rf velo-signal/SignalFfi.xcframework velo-signal/Sources/LibSignalClient
+          # header in una sottocartella: Monal ha gia' un module.modulemap in include/ (pacchetto Rust)
+          mkdir -p libsignal-ios/hdr/SignalFfi && cp libsignal-ios/SignalFfi/* libsignal-ios/hdr/SignalFfi/
+          xcodebuild -create-xcframework -library libsignal-ios/libsignal_ffi.a -headers libsignal-ios/hdr -output velo-signal/SignalFfi.xcframework
+          cp -R libsignal-ios/LibSignalClient velo-signal/Sources/LibSignalClient
+          cp velo-signal/LibSignalClientVelo/*.swift velo-signal/Sources/LibSignalClient/
+          ls velo-signal velo-signal/Sources
+
+      - name: Configurazione Velo (dai segreti del repository)
+        env:
+          VELO_LOGIN_DOMAIN: ${{ secrets.VELO_LOGIN_DOMAIN }}
+          VELO_ONION_HOST: ${{ secrets.VELO_ONION_HOST }}
+          VELO_BUNDLE_ID: ${{ secrets.VELO_BUNDLE_ID }}
+        run: |
+          test -n "$VELO_LOGIN_DOMAIN" && test -n "$VELO_ONION_HOST" && test -n "$VELO_BUNDLE_ID"
+          sed -i '' "s|__VELO_LOGIN_DOMAIN__|$VELO_LOGIN_DOMAIN|; s|__VELO_ONION_HOST__|$VELO_ONION_HOST|" Monal/Classes/MLConstants.h
+          sed -i '' "s|__VELO_BUNDLE_ID__|$VELO_BUNDLE_ID|g" Monal/Monal.xcodeproj/project.pbxproj Monal/Monal.ios.entitlements Monal/NotificationService/NotificationService.ios.entitlements
+          ! grep -rq "__VELO_" Monal/Classes/MLConstants.h Monal/Monal.xcodeproj/project.pbxproj Monal/Monal.ios.entitlements Monal/NotificationService/NotificationService.ios.entitlements
+          echo "configurazione applicata"
+
+      - name: Toolchain Rust + librerie native
+        run: |
+          rustup show || true
+          bash rust/build-rust.sh
+
+      - name: CocoaPods
+        working-directory: Monal
+        run: |
+          pod --version
+          pod install --repo-update
+
+      - name: Archive (senza firma)
+        working-directory: Monal
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace Monal.xcworkspace \
+            -scheme "Monal" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/Monal.xcarchive" \
+            clean archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            GCC_WARN_ABOUT_RETURN_TYPE=YES \
+            CLANG_WARN_COMMA=YES \
+            CLANG_WARN_DELETE_NON_VIRTUAL_DTOR=YES \
+            CLANG_WARN_DIRECT_OBJC_ISA_USAGE=YES \
+            CLANG_WARN_OBJC_ROOT_CLASS=YES \
+            CLANG_WARN_PRAGMA_PACK=YES \
+            CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER=YES \
+            CLANG_WARN_STRICT_PROTOTYPES=YES \
+            CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION=YES \
+            CLANG_WARN_VEXING_PARSE=YES
+
+      - name: Impacchetta IPA non firmato
+        working-directory: Monal
+        run: |
+          APP=$(ls -d build/Monal.xcarchive/Products/Applications/*.app | head -1)
+          echo "App trovata: $APP"
+          rm -rf build/Payload build/Velo-unsigned.ipa
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/
+          (cd build && zip -qry Velo-unsigned.ipa Payload)
+          ls -lh build/Velo-unsigned.ipa
+          # repository pubblico: gli artifact li scarica chiunque, quindi l'IPA (che contiene gli
+          # indirizzi del server) esce solo cifrato con la passphrase dei segreti
+          openssl enc -aes-256-cbc -md sha256 -pbkdf2 -iter 200000 -salt -in build/Velo-unsigned.ipa -out build/Velo-unsigned.ipa.enc -pass env:IPA_PASSPHRASE
+          rm build/Velo-unsigned.ipa
+        env:
+          IPA_PASSPHRASE: ${{ secrets.IPA_PASSPHRASE }}
+
+      - name: Carica l'IPA come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Velo-ios-unsigned-ipa
+          path: Monal/build/Velo-unsigned.ipa.enc
+          retention-days: 3
+          if-no-files-found: error

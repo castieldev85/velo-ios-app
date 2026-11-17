@@ -1,0 +1,240 @@
+//
+//  MLHandler.m
+//  monalxmpp
+//
+//  Created by Thilo Molitor on 29.10.20.
+//  Copyright © 2020 Monal.im. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+#import <monalxmpp/MLConstants.h>
+#import <monalxmpp/MLHandler.h>
+#import <monalxmpp/HelperTools.h>
+#import <monalxmpp/MLDelayedDealloc.h>
+
+#define HANDLER_VERSION 1
+
+@interface MLHandler ()
+{
+    NSMutableDictionary* _internalData;
+    BOOL _invalidated;
+}
+@end
+
+NSString* type_to_classname(NSString* type)
+{
+    return [type componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"*< "]][0];
+}
+
+@implementation MLHandler
+
+-(instancetype) init
+{
+    self = [super init];
+    
+    //always delay own deallocation to not block receive/send queues or any other queues
+    [MLDelayedDealloc delayFor:self];
+    
+    return self;
+}
+
+-(instancetype) initWithDelegate:(id) delegate handlerName:(NSString*) handlerName andBoundArguments:(NSDictionary*) args
+{
+    self = [self init];
+    return [self INTERNALinitWithDelegate:delegate handlerName:handlerName invalidationHandlerName:nil andBoundArguments:args];
+}
+
+-(instancetype) initWithDelegate:(id) delegate handlerName:(NSString*) handlerName invalidationHandlerName:(NSString*) invalidationHandlerName andBoundArguments:(NSDictionary*) args
+{
+    self = [self init];
+    return [self INTERNALinitWithDelegate:delegate handlerName:handlerName invalidationHandlerName:invalidationHandlerName andBoundArguments:args];
+}
+
+-(instancetype) INTERNALinitWithDelegate:(id) delegate handlerName:(NSString*) handlerName invalidationHandlerName:(NSString* _Nullable) invalidationHandlerName andBoundArguments:(NSDictionary* _Nullable) args
+{
+    if(![delegate respondsToSelector:[self handlerNameToSelector:handlerName]])
+        @throw [NSException exceptionWithName:@"RuntimeException" reason:[NSString stringWithFormat:@"Class '%@' does not provide handler implementation '%@'!", NSStringFromClass(delegate), handlerName] userInfo:@{
+            @"delegate": NSStringFromClass(delegate),
+            @"handlerSelector": NSStringFromSelector([self handlerNameToSelector:handlerName]),
+        }];
+    if(invalidationHandlerName && ![delegate respondsToSelector:[self handlerNameToSelector:invalidationHandlerName]])
+        @throw [NSException exceptionWithName:@"RuntimeException" reason:[NSString stringWithFormat:@"Class '%@' does not provide invalidation implementation '%@'!", NSStringFromClass(delegate), invalidationHandlerName] userInfo:@{
+            @"delegate": NSStringFromClass(delegate),
+            @"handlerSelector": NSStringFromSelector([self handlerNameToSelector:handlerName]),
+            @"invalidationSelector": NSStringFromSelector([self handlerNameToSelector:invalidationHandlerName]),
+        }];
+    _internalData = [NSMutableDictionary new];
+    _invalidated = NO;
+    [_internalData addEntriesFromDictionary:@{
+        @"version": @(HANDLER_VERSION),
+        @"delegate": NSStringFromClass(delegate),
+        @"handlerName": handlerName,
+    }];
+    if(invalidationHandlerName)
+        _internalData[@"invalidationName"] = invalidationHandlerName;
+    [self bindArguments:args];
+    return self;
+}
+
+-(void) bindArguments:(NSDictionary* _Nullable) args
+{
+    [self checkInvalidation];
+    _internalData[@"boundArguments"] = [self sanitizeArguments:args];
+}
+
+-(id _Nullable) callWithArguments:(NSDictionary* _Nullable) args
+{
+    MLAssert(_internalData[@"delegate"] && _internalData[@"handlerName"], @"Tried to call MLHandler while delegate and/or handlerName was not set!", @{@"handler": _internalData});
+    [self checkInvalidation];
+    args = [self sanitizeArguments:args];
+    id delegate = NSClassFromString(_internalData[@"delegate"]);
+    SEL sel = [self handlerNameToSelector:_internalData[@"handlerName"]];
+    if(![delegate respondsToSelector:sel])
+        @throw [NSException exceptionWithName:@"RuntimeException" reason:[NSString stringWithFormat:@"Class '%@' does not provide handler implementation '%@'!", _internalData[@"delegate"], _internalData[@"handlerName"]] userInfo:@{
+            @"delegate": _internalData[@"delegate"],
+            @"handlerSelector": NSStringFromSelector(sel),
+        }];
+    NSMethodSignature* sig = [delegate methodSignatureForSelector:sel];
+    DDLogVerbose(@"Calling handler %@...", self);
+    NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+    [inv setTarget:delegate];
+    [inv setSelector:sel];
+    //arguments 0 and 1 are self and _cmd respectively, automatically set by NSInvocation
+    //default arguments of the caller
+    [inv setArgument:(void* _Nonnull)&args atIndex:2];
+    //bound arguments of the handler
+    //make sure we use a copy because we don't want to leak changes of our bound arguments dict into already running invocations
+    NSDictionary* boundArgs = [_internalData[@"boundArguments"] copy];
+    [inv setArgument:(void* _Nonnull)&boundArgs atIndex:3];
+    //now call it
+    [inv invoke];
+    //and extract the return value
+    __unsafe_unretained id tempObject = nil;
+    if(sig.methodReturnLength)
+        [inv getReturnValue:&tempObject];
+    id retval = tempObject;
+    return retval;
+}
+
+-(id _Nullable) invalidateWithArguments:(NSDictionary* _Nullable) args
+{
+    if(!(_internalData[@"delegate"] && _internalData[@"invalidationName"]))
+        return nil;
+    [self checkInvalidation];
+    args = [self sanitizeArguments:args];
+    id delegate = NSClassFromString(_internalData[@"delegate"]);
+    SEL sel = [self handlerNameToSelector:_internalData[@"invalidationName"]];
+    if(![delegate respondsToSelector:sel])
+        @throw [NSException exceptionWithName:@"RuntimeException" reason:[NSString stringWithFormat:@"Class '%@' does not provide invalidation implementation '%@'!", _internalData[@"delegate"], _internalData[@"invalidationName"]] userInfo:@{
+            @"delegate": _internalData[@"delegate"],
+            @"handlerSelector": NSStringFromSelector([self handlerNameToSelector:_internalData[@"handlerName"]]),
+            @"invalidationSelector": NSStringFromSelector(sel),
+        }];
+    DDLogVerbose(@"Calling invalidation %@...", self);
+    NSMethodSignature* sig = [delegate methodSignatureForSelector:sel];
+    NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+    [inv setTarget:delegate];
+    [inv setSelector:sel];
+    //arguments 0 and 1 are self and _cmd respectively, automatically set by NSInvocation
+    //default arguments of the caller
+    [inv setArgument:(void* _Nonnull)&args atIndex:2];
+    //bound arguments of the handler
+    //make sure we use a copy because we don't want to leak changes of our bound arguments dict into already running invocations
+    NSDictionary* boundArgs = [_internalData[@"boundArguments"] copy];
+    [inv setArgument:(void* _Nonnull)&boundArgs atIndex:3];
+    //now call it
+    [inv invoke];
+    _invalidated = YES;
+    //and extract the return value
+    __unsafe_unretained id tempObject = nil;
+    if(sig.methodReturnLength)
+        [inv getReturnValue:&tempObject];
+    id retval = tempObject;
+    return retval;
+}
+
+-(NSString*) id
+{
+    if(!_internalData[@"delegate"] || !_internalData[@"handlerName"])
+        return @"{emptyHandler}";
+    NSString* extras = @"";
+    if(_internalData[@"invalidationName"])
+        extras = [NSString stringWithFormat:@"<%@>", _internalData[@"invalidationName"]];
+    return [NSString stringWithFormat:@"%@|%@%@", _internalData[@"delegate"], _internalData[@"handlerName"], extras];
+}
+
+-(NSString*) description
+{
+    NSString* extras = @"";
+    if(_internalData[@"invalidationName"])
+        extras = [NSString stringWithFormat:@"<%@>", _internalData[@"invalidationName"]];
+    return [NSString stringWithFormat:@"{%@, %@%@}", _internalData[@"delegate"], _internalData[@"handlerName"], extras];
+}
+
++(BOOL) supportsSecureCoding
+{
+    return YES;
+}
+
+-(void) encodeWithCoder:(NSCoder*) coder
+{
+    [coder encodeObject:_internalData forKey:@"internalData"];
+    [coder encodeBool:_invalidated forKey:@"invalidated"];
+}
+
+-(instancetype) initWithCoder:(NSCoder*) coder
+{
+    self = [self init];
+    _internalData = [coder decodeObjectForKey:@"internalData"];
+    _invalidated = [coder decodeBoolForKey:@"invalidated"];
+    return self;
+}
+
+-(id) copyWithZone:(NSZone*) zone
+{
+    MLHandler* copy = [[[self class] alloc] init];
+    copy->_internalData = [[NSMutableDictionary alloc] initWithDictionary:_internalData copyItems:YES];
+    copy->_invalidated = _invalidated;
+    return copy;
+}
+
+//this removes NSNull references from arguments altogether
+-(NSMutableDictionary*) sanitizeArguments:(NSDictionary* _Nullable) args
+{
+    NSMutableDictionary* retval = [NSMutableDictionary new];
+    if(args)
+        for(NSString* key in args)
+            if(args[key] != [NSNull null])
+                retval[key] = args[key];
+    return retval;
+}
+
+-(void) checkInvalidation
+{
+    if(_invalidated)
+        @throw [NSException exceptionWithName:@"RuntimeException" reason:@"Tried to call or bind vars to already invalidated handler!" userInfo:@{
+            @"handler": _internalData,
+        }];
+}
+
+-(SEL) handlerNameToSelector:(NSString*) handlerName
+{
+    return NSSelectorFromString([NSString stringWithFormat:@"MLHandler_%@_withArguments:andBoundArguments:", handlerName]);
+}
+
++(void) throwDynamicUnpackingExceptionForType:(NSString*) type andVar:(NSString*) varName andUserData:(id) userInfo andFile:(char*) file andLine:(int) line andFunc:(char*) func
+{
+    NSString* text = [NSString stringWithFormat:@"Dynamic unpacking exception triggered for '%@' var '%@' at %@:%d in %s", type, varName, [HelperTools sanitizeFilePath:file], line, func];
+    DDLogError(@"%@", text);
+    @throw [NSException exceptionWithName:text reason:text userInfo:userInfo];
+}
+
++(NSString*) throwDynamicPackingExceptionForType:(NSString*) type andVar:(NSString*) varName andUserData:(id) userInfo andFile:(char*) file andLine:(int) line andFunc:(char*) func
+{
+    NSString* text = [NSString stringWithFormat:@"Dynamic packing exception triggered for '%@' var '%@' at %@:%d in %s", type, varName, [HelperTools sanitizeFilePath:file], line, func];
+    DDLogError(@"%@", text);
+    @throw [NSException exceptionWithName:text reason:text userInfo:userInfo];
+    return [NSString stringWithFormat:@"Wrong type packed for type '%@' name '%@' at %@:%d in %s", type, varName, [HelperTools sanitizeFilePath:file], line, func];
+}
+
+@end

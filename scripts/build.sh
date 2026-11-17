@@ -1,0 +1,134 @@
+#!/bin/bash
+
+function exportMacOS {
+    local EXPORT_OPTIONS_CATALYST="$1"
+    local BUILD_TYPE="$2"
+
+    NSUnbufferedIO=YES xcodebuild -exportArchive \
+        -archivePath "build/macos_$APP_NAME.xcarchive" \
+        -exportPath "build/app" \
+        -exportOptionsPlist "$EXPORT_OPTIONS_CATALYST" \
+        -allowProvisioningUpdates \
+        -configuration $BUILD_TYPE \
+        2>&1 | xcbeautify
+
+    echo "build dir:"
+    ls -l "build"
+}
+
+# Abort on Error
+set -e
+
+# Needed for xcbeautify
+set -o pipefail
+
+cd Monal
+
+security unlock-keychain -p $(cat /Users/ci/keychain.txt) login.keychain
+security set-keychain-settings -t 3600 -l ~/Library/Keychains/login.keychain
+
+echo ""
+echo "*******************************************"
+echo "*     Update localizations submodules     *"
+echo "*******************************************"
+git submodule update -f --init --remote
+
+echo ""
+echo "*******************************************"
+echo "*     Building rust packages & bridge     *"
+echo "*******************************************"
+
+bash ../rust/build-rust.sh
+
+echo ""
+echo "***************************************"
+echo "*     Installing macOS & iOS Pods     *"
+echo "***************************************"
+pod install --repo-update
+
+if [ "$BUILD_SCHEME" != "Quicksy" ]; then
+    echo ""
+    echo "***************************"
+    echo "*     Archiving macOS     *"
+    echo "***************************"
+    NSUnbufferedIO=YES xcrun xcodebuild \
+        -workspace "Monal.xcworkspace" \
+        -scheme "$BUILD_SCHEME" \
+        -sdk macosx \
+        -configuration $BUILD_TYPE \
+        -destination 'generic/platform=macOS,variant=Mac Catalyst,name=Any Mac' \
+        -archivePath "build/macos_$APP_NAME.xcarchive" \
+        -allowProvisioningUpdates \
+        archive \
+        BUILD_LIBRARIES_FOR_DISTRIBUTION=YES \
+        SUPPORTS_MACCATALYST=YES \
+        2>&1 | xcbeautify
+
+    echo ""
+    echo "****************************"
+    echo "*     Exporting macOS      *"
+    echo "****************************"
+    # see: https://gist.github.com/cocoaNib/502900f24846eb17bb29
+    # and: https://forums.developer.apple.com/thread/100065
+    # and: for developer-id distribution (distribution *outside* of appstore) an developer-id certificate must be used for building
+    if [ ! -z ${EXPORT_OPTIONS_CATALYST_APPSTORE} ]; then
+        echo "***************************************"
+        echo "*    Exporting AppStore macOS         *"
+        echo "***************************************"
+        exportMacOS "$EXPORT_OPTIONS_CATALYST_APPSTORE" "$BUILD_TYPE"
+    fi
+
+    if [ ! -z ${EXPORT_OPTIONS_CATALYST_APP_EXPORT} ]; then
+        echo "***********************************"
+        echo "*    Exporting app macOS          *"
+        echo "***********************************"
+        exportMacOS "$EXPORT_OPTIONS_CATALYST_APP_EXPORT" "$BUILD_TYPE"
+
+        echo ""
+        echo "**************************"
+        echo "*     Packing macOS zip  *"
+        echo "**************************"
+        cd build/app
+        mkdir tar_release
+        mv "$APP_NAME.app" "tar_release/$APP_DIR"
+        cd tar_release
+        /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "../$APP_NAME".zip
+        cd ../../..
+        /usr/bin/ditto -c -k --sequesterRsrc --keepParent "build/macos_$APP_NAME.xcarchive/dSYMs" "build/app/monal-catalyst-dsym.zip"
+        ls -l build/app
+    fi
+fi
+
+echo ""
+echo "*************************"
+echo "*     Archiving iOS     *"
+echo "*************************"
+NSUnbufferedIO=YES xcrun xcodebuild \
+    -workspace "Monal.xcworkspace" \
+    -scheme "$BUILD_SCHEME" \
+    -sdk iphoneos \
+    -configuration $BUILD_TYPE \
+    -archivePath "build/ios_$APP_NAME.xcarchive" \
+    -allowProvisioningUpdates \
+    archive \
+    2>&1 | xcbeautify
+
+echo ""
+echo "*************************"
+echo "*     Exporting iOS     *"
+echo "*************************"
+# see: https://gist.github.com/cocoaNib/502900f24846eb17bb29
+# and: https://forums.developer.apple.com/thread/100065
+NSUnbufferedIO=YES xcodebuild \
+    -exportArchive \
+    -archivePath "build/ios_$APP_NAME.xcarchive" \
+    -exportPath "build/ipa" \
+    -exportOptionsPlist $EXPORT_OPTIONS_IOS \
+    -configuration $BUILD_TYPE \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration \
+    2>&1 | xcbeautify
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "build/ios_$APP_NAME.xcarchive/dSYMs" "build/ipa/monal-ios-dsym.zip"
+
+echo "build dir:"
+find build

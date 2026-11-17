@@ -1,0 +1,78 @@
+name: libsignal PQ per iOS (fork monocles pq-omemo-2)
+
+# Compila la stessa libsignal della Velo Android (codeberg monocles/pq-omemo-2, commit
+# fissato) come libreria statica per iPhone + header C rigenerato con le funzioni PQ.
+on:
+  workflow_dispatch:
+
+env:
+  LIBSIGNAL_REPO: https://codeberg.org/monocles/pq-omemo-2.git
+  LIBSIGNAL_COMMIT: faf70ea2791c75bf450b8461a97dc5933c1abe3f
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Sorgente libsignal (commit uguale all'Android)
+        run: |
+          git init libsignal && cd libsignal
+          git remote add origin "$LIBSIGNAL_REPO"
+          git fetch --depth 1 origin "$LIBSIGNAL_COMMIT"
+          git checkout FETCH_HEAD
+          git log --oneline -1
+
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            libsignal/target
+          key: libsignal-ios-nolto2-${{ env.LIBSIGNAL_COMMIT }}
+
+      - name: Toolchain
+        working-directory: libsignal
+        run: |
+          rustup show
+          rustup target add aarch64-apple-ios
+          cargo +stable install --version "$(cat .cbindgen-version)" --locked cbindgen || cargo +stable install cbindgen
+          brew list protobuf >/dev/null 2>&1 || brew install protobuf
+
+      - name: Header C con le funzioni PQ
+        working-directory: libsignal
+        run: |
+          swift/build_ffi.sh -r --generate-ffi
+          grep -c "signal_pq_" swift/Sources/SignalFfi/signal_ffi.h
+          grep "signal_pq_\|with_pq_identity" swift/Sources/SignalFfi/signal_ffi.h | head -20
+
+      - name: Libreria per iPhone (arm64)
+        working-directory: libsignal
+        run: |
+          # Niente LTO (build_ffi.sh la forza per iOS): l'archivio deve contenere codice macchina,
+          # non bitcode LLVM che Xcode non sa leggere (errore "Unknown header: 0xb17c0de").
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$LATEST" ] && sudo xcode-select -s "$LATEST/Contents/Developer"
+          export IPHONEOS_DEPLOYMENT_TARGET=15
+          export RUSTFLAGS="--cfg aes_armv8"
+          export CARGO_PROFILE_RELEASE_LTO=false
+          cargo build -p libsignal-ffi --release --target aarch64-apple-ios --features log/release_max_level_info
+          ls -lh target/aarch64-apple-ios/release/libsignal_ffi.a
+          lipo -info target/aarch64-apple-ios/release/libsignal_ffi.a
+          echo "ring p256 definito?"; nm -gU target/aarch64-apple-ios/release/libsignal_ffi.a 2>/dev/null | grep -c "p256_point_mul_base_vartime" || true
+          nm -gU target/aarch64-apple-ios/release/libsignal_ffi.a 2>/dev/null | grep -c " _signal_pq_" || true
+
+      - name: Impacchetta
+        run: |
+          mkdir -p out/SignalFfi
+          cp libsignal/target/aarch64-apple-ios/release/libsignal_ffi.a out/
+          cp libsignal/swift/Sources/SignalFfi/* out/SignalFfi/
+          cp -R libsignal/swift/Sources/LibSignalClient out/LibSignalClient
+          cp libsignal/LICENSE out/LICENSE-libsignal
+          ls -lR out | head -30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libsignal-ios
+          path: out
+          if-no-files-found: error

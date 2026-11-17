@@ -1,0 +1,761 @@
+//
+//  MLSignalStore.m
+//  Monal
+//
+//  Created by Anurodh Pokharel on 5/3/18.
+//  Copyright © 2018 Monal.im. All rights reserved.
+//
+
+#import <monalxmpp/MLConstants.h>
+#import <monalxmpp/MLSignalStore.h>
+#import "SignalProtocolObjC.h"
+#import <monalxmpp/DataLayer.h>
+#import <monalxmpp/MLSQLite.h>
+#import <monalxmpp/HelperTools.h>
+#import <monalxmpp/MLOMEMO.h>
+#import <monalxmpp/MLContact.h>
+
+@interface MLSignalStore()
+{
+    NSString* _dbPath;
+}
+@property (nonatomic, strong) NSNumber* accountID;
+@property (readonly, strong) MLSQLite* sqliteDatabase;
+@end
+
+@implementation MLSignalStore
+
++(void) initialize
+{
+    //TODO: WE USE THE SAME DATABASE FILE AS THE DataLayer --> this should probably be migrated into the datalayer or use its own sqlite database
+    
+    //make sure the datalayer has migrated the database file to the app group location first
+    [DataLayer initialize];
+}
+
++(BOOL) acceptedTrustLevel:(int) trustLevel withTofu:(BOOL) withTofu andOutgoing:(BOOL) outgoing
+{
+    //for better UX never refuse to encrypt/decrypt from/to old devices
+    if(withTofu)
+        return
+            trustLevel == MLOmemoTrusted ||
+            trustLevel == MLOmemoTrustedButNoMsgSeenInTime ||
+            trustLevel == MLOmemoToFU ||
+            trustLevel == MLOmemoToFUButNoMsgSeenInTime;
+    return
+        trustLevel == MLOmemoTrusted ||
+        trustLevel == MLOmemoTrustedButNoMsgSeenInTime;
+}
+
+//this is the getter of our readonly "sqliteDatabase" property always returning the thread-local instance of the MLSQLite class
+-(MLSQLite*) sqliteDatabase
+{
+    //always return thread-local instance of sqlite class (this is important for performance!)
+    return [MLSQLite sharedInstanceForFile:_dbPath];
+}
+
+-(MLSignalStore*) initWithAccountID:(NSNumber*) accountID andAccountJid:(NSString* _Nonnull) accountJid
+{
+    self = [super init];
+    _dbPath = [[HelperTools getContainerURLForPathComponents:@[@"sworim.sqlite"]] path];
+    
+    self.accountID = accountID;
+    NSArray* data = [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeReader:@"SELECT identityPrivateKey, deviceid, identityPublicKey FROM signalIdentity WHERE account_id=?;" andArguments:@[accountID]];
+    }];
+    NSDictionary* row = [data firstObject];
+
+    if(row)
+    {
+        self.deviceid = [(NSNumber *)[row objectForKey:@"deviceid"] unsignedIntValue];
+        self.accountJid = accountJid;
+        
+        NSData* idKeyPub = [row objectForKey:@"identityPublicKey"];
+        NSData* idKeyPrivate = [row objectForKey:@"identityPrivateKey"];
+        
+        NSError* error;
+        self.identityKeyPair = [[SignalIdentityKeyPair alloc] initWithPublicKey:idKeyPub privateKey:idKeyPrivate error:&error];
+        if(error)
+        {
+            DDLogError(@"prekey error %@", error);
+            return self;
+        }
+        
+        self.signedPreKey = [[SignalSignedPreKey alloc] initWithSerializedData:[self loadSignedPreKeyWithId:1] error:&error];
+        if(error)
+        {
+            DDLogError(@"signed prekey error %@", error);
+            return self;
+        }
+        // remove old keys that should no longer be available
+        [self cleanupPreKeys];
+        [self cleanupDeletedDevices];
+    }
+    else
+        self.deviceid = 0;
+
+    return self; 
+}
+
+-(void) cleanupPreKeys
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        // remove old prekeys that have been removed some time ago from pubsub
+        [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalPreKey WHERE account_id=? AND pubSubRemovalTimestamp IS NOT NULL AND unixepoch(pubSubRemovalTimestamp) <= unixepoch('now', '-14 day');" andArguments:@[self.accountID]];
+    }];
+}
+
+-(void) cleanupDeletedDevices
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        DDLogVerbose(@"All removed devices: %@", [self.sqliteDatabase executeReader:@"SELECT * FROM signalContactIdentity WHERE account_id=? AND removedFromDeviceList IS NOT NULL;" andArguments:@[self.accountID]]);
+        // remove old devices and their sessions that have been removed some time ago from pubsub and never been added back
+        // this grace period of 28 days makes sure a device added  back to the devicelist when the deleted device comes online again
+        // does still work without a trust level and/or session reset
+        NSArray* devices = [self.sqliteDatabase executeReader:@"SELECT contactName, contactDeviceId, removedFromDeviceList FROM signalContactIdentity WHERE account_id=? AND removedFromDeviceList IS NOT NULL AND unixepoch(removedFromDeviceList) <= unixepoch('now', ?);" andArguments:@[self.accountID, [NSString stringWithFormat:@"-%d days", OMEMO_DEVICE_CLEANUP_GRACE_PERIOD]]];
+        DDLogVerbose(@"Cleaning up devices: %@", devices);
+        for(NSDictionary* device in devices)
+            [self forceDeleteDeviceForSource:[[SignalAddress alloc] initWithName:device[@"contactName"] deviceId:[device[@"contactDeviceId"] unsignedIntValue]]];
+    }];
+}
+
+-(void) forceDeleteDeviceForSource:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self deleteSessionRecordForAddress:address];
+        [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalContactIdentity WHERE account_id=? AND contactName=? AND contactDeviceId=?;" andArguments:@[self.accountID, address.name, @(address.deviceId)]];
+    }];
+}
+
+-(void) immediateCleanupForJid:(NSString*) jid
+{
+    if(jid == nil)
+        return;
+    [self.sqliteDatabase voidWriteTransaction:^{
+        // remove sessions of jid
+        [self deleteAllSessionsForAddressName:jid];
+        // remove devices of jid
+        [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalContactIdentity WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, jid]];
+    }];
+}
+
+-(NSMutableArray<SignalPreKey*>*) readPreKeys
+{
+    NSArray* keys = [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeReader:@"SELECT prekeyid, preKey FROM signalPreKey WHERE account_id=? AND keyUsed=0;" andArguments:@[self.accountID]];
+    }];
+    
+    NSMutableArray<SignalPreKey*>* array = [[NSMutableArray alloc] initWithCapacity:keys.count];
+    for(NSDictionary* row in keys)
+    {
+        SignalPreKey* key = [[SignalPreKey alloc] initWithSerializedData:[row objectForKey:@"preKey"] error:nil];
+        if(key != nil)
+            [array addObject:key];
+    }
+    return array; 
+}
+
+-(int) getHighestPreKeyId
+{
+    NSNumber* highestId = [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT prekeyid FROM signalPreKey WHERE account_id=? ORDER BY prekeyid DESC LIMIT 1;" andArguments:@[self.accountID]];
+    }];
+
+    if(highestId == nil) {
+        return 0; // Default value -> first preKeyId will be 1
+    } else {
+        return highestId.intValue;
+    }
+}
+
+-(unsigned int) getPreKeyCount
+{
+    NSNumber* count = [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT COUNT(prekeyid) FROM signalPreKey WHERE account_id=? AND pubSubRemovalTimestamp IS NULL AND keyUsed=0;" andArguments:@[self.accountID]];
+    }];
+    return count.unsignedIntValue;
+}
+
+-(void) saveValues:(NSArray<SignalPreKey*>*) preKeys
+{
+    [self storeSignedPreKey:self.signedPreKey.serializedData signedPreKeyId:1];
+    [self storeIdentityPublicKey:self.identityKeyPair.publicKey andPrivateKey:self.identityKeyPair.privateKey];
+    
+    for(SignalPreKey* key in preKeys)
+        [self storePreKey:key.serializedData preKeyId:key.preKeyId];
+}
+
+/**
+ * Returns a copy of the serialized session record corresponding to the
+ * provided recipient ID + device ID tuple.
+ * or nil if not found.
+ */
+- (NSData* _Nullable) sessionRecordForAddress:(SignalAddress*) address
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT recordData FROM signalContactSession WHERE account_id=? AND contactName=? AND contactDeviceId=?;" andArguments:@[self.accountID, address.name, @(address.deviceId)]];
+    }];
+}
+
+/**
+ * Commit to storage the session record for a given
+ * recipient ID + device ID tuple.
+ *
+ * Return YES on success, NO on failure.
+ */
+-(BOOL) storeSessionRecord:(NSData*) recordData forAddress:(SignalAddress*) address
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        if([self sessionRecordForAddress:address])
+            return [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactSession SET recordData=? WHERE account_id=? AND contactName=? AND contactDeviceId=?;" andArguments:@[recordData, self.accountID, address.name, @(address.deviceId)]];
+        else
+            return [self.sqliteDatabase executeNonQuery:@"INSERT INTO signalContactSession (account_id, contactName, contactDeviceId, recordData) VALUES (?, ?, ?, ?);" andArguments:@[self.accountID, address.name, @(address.deviceId), recordData]];
+    }];
+}
+
+/**
+ * Determine whether there is a committed session record for a
+ * recipient ID + device ID tuple.
+ */
+- (BOOL) sessionRecordExistsForAddress:(SignalAddress*) address;
+{
+    NSData* preKeyData = [self sessionRecordForAddress:address];
+    return preKeyData ? YES : NO;
+}
+
+/**
+ * Remove a session record for a recipient ID + device ID tuple.
+ */
+- (BOOL) deleteSessionRecordForAddress:(SignalAddress*) address
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        return [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalContactSession WHERE account_id=? AND contactName=? AND contactDeviceId=?;" andArguments:@[self.accountID, address.name, @(address.deviceId)]];
+    }];
+}
+
+/**
+ * Returns all known devices with active sessions for a recipient
+ */
+- (NSArray<NSNumber*>*) allDeviceIdsForAddressName:(NSString*) jid
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalarReader:@"SELECT DISTINCT contactDeviceId FROM signalContactSession WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, jid]];
+    }];
+}
+
+-(NSArray<NSNumber*>*) knownDevicesForAddressName:(NSString*) jid withRemovedDevices:(BOOL) removed
+{
+    if(!jid)
+        return nil;
+
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalarReader:@"SELECT DISTINCT contactDeviceId FROM signalContactIdentity WHERE account_id=? AND contactName=? AND (removedFromDeviceList IS NULL OR ?=1);" andArguments:@[self.accountID, jid, @(removed)]];
+    }];
+}
+
+-(NSArray<NSNumber*>*) knownDevicesWithValidSession:(NSString*) jid
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalarReader:@"\
+                SELECT DISTINCT \
+                    contactDeviceId \
+                FROM signalContactIdentity \
+                WHERE \
+                    account_id=? \
+                    AND contactName=? \
+                    AND removedFromDeviceList IS NULL \
+                    AND brokenSession=false \
+            ;" andArguments:@[self.accountID, jid]];
+    }];
+}
+
+-(NSArray<NSNumber*>*) knownDevicesWithPendingBrokenSessionHandling:(NSString*) jid
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalarReader:@"\
+                SELECT DISTINCT \
+                    contactDeviceId \
+                FROM signalContactIdentity \
+                WHERE \
+                    account_id=? \
+                    AND contactName=? \
+                    AND removedFromDeviceList IS NULL \
+                    AND brokenSession=true \
+                    AND (lastFailedBundleFetch IS NULL OR unixepoch(lastFailedBundleFetch) <= unixepoch('now', '-5 day'))\
+            ;" andArguments:@[self.accountID, jid]];
+    }];
+}
+
+/**
+ * Remove the session records corresponding to all devices of a recipient ID.
+ *
+ * @return the number of deleted sessions on success, negative on failure
+ */
+-(int) deleteAllSessionsForAddressName:(NSString*) addressName
+{
+    return [[self.sqliteDatabase idWriteTransaction:^{
+        NSNumber* count = (NSNumber*) [self.sqliteDatabase executeScalar:@"SELECT COUNT(*) FROM  signalContactSession WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, addressName]];
+        [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalContactSession WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, addressName]];
+        return count;
+    }] intValue];
+}
+
+/**
+ * Load a local serialized PreKey record.
+ * return nil if not found
+ */
+- (nullable NSData*) loadPreKeyWithId:(uint32_t) preKeyId;
+{
+    DDLogDebug(@"Loading prekey %lu", (unsigned long)preKeyId);
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT prekey FROM signalPreKey WHERE account_id=? AND prekeyid=? AND keyUsed=0;" andArguments:@[self.accountID, @(preKeyId)]];
+    }];
+}
+
+/**
+ * Store a local serialized PreKey record.
+ * return YES if storage successful, else NO
+ */
+-(BOOL) storePreKey:(NSData*) preKey preKeyId:(uint32_t) preKeyId
+{
+    DDLogDebug(@"Storing prekey %lu", (unsigned long)preKeyId);
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        // Only store new preKeys
+        NSNumber* preKeyCnt = [self.sqliteDatabase executeScalar:@"SELECT count(*) FROM signalPreKey WHERE account_id=? AND prekeyid=? AND preKey=?;" andArguments:@[self.accountID, @(preKeyId), preKey]];
+        if(preKeyCnt.intValue > 0)
+            return YES;
+        return [self.sqliteDatabase executeNonQuery:@"INSERT INTO signalPreKey (account_id, prekeyid, preKey) VALUES (?, ?, ?);" andArguments:@[self.accountID, @(preKeyId), preKey]];
+    }];
+}
+
+/**
+ * Determine whether there is a committed PreKey record matching the
+ * provided ID.
+ */
+-(BOOL) containsPreKeyWithId:(uint32_t) preKeyId;
+{
+    NSData* prekey = [self loadPreKeyWithId:preKeyId];
+    return prekey ? YES : NO;
+}
+
+
+-(BOOL) deletePreKeyWithId:(uint32_t) preKeyId
+{
+    DDLogDebug(@"Marking prekey %lu as deleted", (unsigned long)preKeyId);
+    // only mark the key for deletion -> key should be removed from pubSub
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        BOOL ret = [self.sqliteDatabase executeNonQuery:@"UPDATE signalPreKey SET keyUsed=1 WHERE account_id=? AND prekeyid=?;" andArguments:@[self.accountID, @(preKeyId)]];
+        return ret;
+    }];
+}
+
+/**
+ * Delete a PreKey record from local storage.
+ */
+-(BOOL) deleteUsedPrekeys
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        BOOL ret = [self.sqliteDatabase executeNonQuery:@"UPDATE signalPreKey SET pubSubRemovalTimestamp=CURRENT_TIMESTAMP WHERE account_id=? AND keyUsed=1 AND pubSubRemovalTimestamp IS NULL;" andArguments:@[self.accountID]];
+        return ret;
+    }];
+}
+
+/**
+ * Load a local serialized signed PreKey record.
+ */
+-(nullable NSData*) loadSignedPreKeyWithId:(uint32_t) signedPreKeyId
+{
+    DDLogDebug(@"Loading signed prekey %lu", (unsigned long)signedPreKeyId);
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT signedPreKey FROM signalSignedPreKey WHERE account_id=? AND signedPreKeyId=?;" andArguments:@[self.accountID, @(signedPreKeyId)]];
+    }];
+}
+
+/**
+ * Store a local serialized signed PreKey record.
+ */
+- (BOOL) storeSignedPreKey:(NSData*) signedPreKey signedPreKeyId:(uint32_t) signedPreKeyId
+{
+    DDLogDebug(@"Storing signed prekey %lu", (unsigned long)signedPreKeyId);
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        return [self.sqliteDatabase executeNonQuery:@"INSERT INTO signalSignedPreKey (account_id, signedPreKeyId, signedPreKey) VALUES (?, ?, ?) ON CONFLICT(account_id, signedPreKeyId) DO UPDATE SET signedPreKey=?;" andArguments:@[self.accountID, @(signedPreKeyId), signedPreKey, signedPreKey]];
+    }];
+}
+
+/**
+ * Determine whether there is a committed signed PreKey record matching
+ * the provided ID.
+ */
+- (BOOL) containsSignedPreKeyWithId:(uint32_t) signedPreKeyId
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT signedPreKey FROM signalSignedPreKey WHERE account_id=? AND signedPreKeyId=?;" andArguments:@[self.accountID, @(signedPreKeyId)]];
+    }] ? YES : NO;
+}
+
+/**
+ * Delete a SignedPreKeyRecord from local storage.
+ */
+- (BOOL) removeSignedPreKeyWithId:(uint32_t) signedPreKeyId
+{
+    DDLogDebug(@"Removing signed prekey %lu", (unsigned long)signedPreKeyId);
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        return [self.sqliteDatabase executeNonQuery:@"DELETE FROM signalSignedPreKey WHERE account_id=? AND signedPreKeyId=?;" andArguments:@[self.accountID, @(signedPreKeyId)]];
+    }];
+}
+
+/**
+ * Get the local client's identity key pair.
+ */
+-(SignalIdentityKeyPair*) getIdentityKeyPair;
+{
+    return self.identityKeyPair;
+}
+
+-(BOOL) identityPublicKeyExists:(NSData*) publicKey andPrivateKey:(NSData *) privateKey
+{
+    return [[self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT COUNT(*) FROM signalIdentity WHERE account_id=? AND deviceid=? AND identityPublicKey=? AND identityPrivateKey=?;" andArguments:@[self.accountID, @(self.deviceid), publicKey, privateKey]];
+    }] boolValue];
+}
+
+- (BOOL) storeIdentityPublicKey:(NSData*) publicKey andPrivateKey:(NSData*) privateKey
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        if([self identityPublicKeyExists:publicKey andPrivateKey:privateKey])
+            return YES;
+
+        return [self.sqliteDatabase executeNonQuery:@"INSERT INTO signalIdentity (account_id, deviceid, identityPublicKey, identityPrivateKey) values (?, ?, ?, ?);" andArguments:@[self.accountID, @(self.deviceid), publicKey, privateKey]];
+    }];
+}
+
+
+/**
+ * Return the local client's registration ID.
+ *
+ * Clients should maintain a registration ID, a random number
+ * between 1 and 16380 that's generated once at install time.
+ *
+ * return negative on failure
+ */
+- (uint32_t) getLocalRegistrationId;
+{
+    return self.deviceid;
+}
+
+/**
+ * Save a remote client's identity key
+ * <p>
+ * Store a remote client's identity key as trusted.
+ * The value of key_data may be null. In this case remove the key data
+ * from the identity store, but retain any metadata that may be kept
+ * alongside it.
+ */
+-(BOOL) saveIdentity:(SignalAddress* _Nonnull) address identityKey:(NSData* _Nullable) identityKey;
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        NSData* dbIdentity= (NSData *)[self.sqliteDatabase executeScalar:@"SELECT IDENTITY FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+        if(dbIdentity)
+            return YES;
+        MLContact* contact = [MLContact createContactFromJid:address.name andAccountID:self.accountID];
+        // if at least one fingerprint isn't TOFU new fingerprints shouldn't be trusted
+        // if all fingerprints are TOFU -> trust new ones with TOFU as well
+        return [self.sqliteDatabase executeNonQuery:@"INSERT INTO signalContactIdentity \
+            (account_id, contactName, contactDeviceId, identity, lastReceivedMsg, trustLevel) \
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?);"
+            andArguments:@[self.accountID, address.name, @(address.deviceId), identityKey, @(contact.hasExplicitOmemoTrustActivated ? MLOmemoInternalNotTrusted : MLOmemoInternalToFU)]];
+    }];
+}
+
+/**
+ * Verify a remote client's identity key.
+ *
+ * Determine whether a remote client's identity is trusted.  Convention is
+ * that the TextSecure protocol is 'trust on first use.'  This means that
+ * an identity key is considered 'trusted' if there is no entry for the recipient
+ * in the local store, or if it matches the saved key for a recipient in the local
+ * store.  Only if it mismatches an entry in the local store is it considered
+ * 'untrusted.'
+ */
+-(BOOL) isTrustedIdentity:(SignalAddress*) address identityKey:(NSData*) identityKey;
+{
+    //this method gets called by the C implementation of libsignal when *sending* messages (apparently not when receiving?).
+    //this means, libsignal doesn't send messages to devices we return NO for, but happily receives and decrypts messages
+    //from these devices.
+    //we already fixed this behavior by explicitly checking the deviceids for sending/receiving in MLOMEMO,
+    //but still call acceptedTrustLevel: here, too, for good measures
+    int trustLevel = [self getTrustLevel:address identityKey:identityKey].intValue;
+    NSData* storedIdentity = [self getIdentityForAddress:address];
+    if(storedIdentity != nil && ![storedIdentity isEqual:identityKey])
+        trustLevel = 0;     //never trust an unknown identityKey if we already know this deviceid (new devices will differ in both)
+    return [[self class] acceptedTrustLevel:trustLevel withTofu:YES andOutgoing:YES];
+}
+
+-(NSData*) getIdentityForAddress:(SignalAddress*) address
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT identity FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+/*
+ * ToFU independent trust update
+ * true -> trust
+ * false -> don't trust
+ * -> after calling updateTrust once ToFU will be over
+ */
+-(void) updateTrust:(BOOL) trust forAddress:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET trustLevel=? WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[@(trust ? MLOmemoInternalTrusted : MLOmemoInternalNotTrusted), self.accountID, @(address.deviceId), address.name]];
+        [[MLContact createContactFromJid:address.name andAccountID:self.accountID] activateExplicitOmemoTrust];
+    }];
+}
+
+-(void) markAllDevicesAsDeletedForAddressName:(NSString*) jid
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET removedFromDeviceList=CURRENT_TIMESTAMP WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, jid]];
+    }];
+}
+
+-(void) markDeviceAsDeleted:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET removedFromDeviceList=CURRENT_TIMESTAMP WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(void) removeDeviceDeletedMark:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET removedFromDeviceList=NULL WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+/*
+ * update lastReceivedMsg to CURRENT_TIMESTAMP
+ * reset brokenSession to false
+ */
+-(void) updateLastSuccessfulDecryptTime:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET lastReceivedMsg=CURRENT_TIMESTAMP, brokenSession=false WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(NSDate*) getLastSuccessfulDecryptTime:(SignalAddress*) address
+{
+    return [NSDate dateWithTimeIntervalSince1970:[[self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT unixepoch(lastReceivedMsg) FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }] doubleValue]];
+}
+
+-(NSDate*) getRemovedFromDevicelistTime:(SignalAddress*) address
+{
+    NSNumber* timestamp = [self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:@"SELECT unixepoch(removedFromDeviceList) FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=? AND removedFromDeviceList IS NOT NULL;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+    if(timestamp == nil)
+        return nil;
+    return [NSDate dateWithTimeIntervalSince1970:timestamp.doubleValue];
+}
+
+-(void) markSessionAsBroken:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET brokenSession=true WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(void) markBundleAsFixed:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET brokenSession=false, lastFailedBundleFetch=NULL WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(void) markBundleAsBroken:(SignalAddress*) address
+{
+    [self.sqliteDatabase voidWriteTransaction:^{
+        [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET lastFailedBundleFetch=unixepoch('now') WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(BOOL) isSessionBrokenForJid:(NSString*) jid andDeviceId:(NSNumber*) deviceId
+{
+    return [self.sqliteDatabase boolReadTransaction:^{
+        return [[self.sqliteDatabase executeScalar:@"SELECT brokenSession FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=?;" andArguments:@[self.accountID, deviceId, jid]] boolValue];
+    }];
+}
+
+-(int) getInternalTrustLevel:(SignalAddress*) address identityKey:(NSData*) identityKey
+{
+    return [[self.sqliteDatabase idReadTransaction:^{
+        return [self.sqliteDatabase executeScalar:(@"SELECT trustLevel FROM signalContactIdentity WHERE account_id=? AND contactDeviceId=? AND contactName=? AND identity=?;") andArguments:@[self.accountID, @(address.deviceId), address.name, identityKey]];
+    }] intValue];
+}
+
+-(void) untrustAllDevicesFrom:(NSString*) jid
+{
+    if([jid isEqualToString:self.accountJid] == NO)
+    {
+        // untrust all devices
+        [self.sqliteDatabase voidWriteTransaction:^{
+            [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET trustLevel=? WHERE account_id=? AND contactName=?;" andArguments:@[@(MLOmemoInternalNotTrusted), self.accountID, jid]];
+            [[MLContact createContactFromJid:jid andAccountID:self.accountID] activateExplicitOmemoTrust];
+        }];
+    }
+    else
+    {
+        // untrust all of our own devices except our own device id
+        [self.sqliteDatabase voidWriteTransaction:^{
+            [self.sqliteDatabase executeNonQuery:@"UPDATE signalContactIdentity SET trustLevel=? WHERE account_id=? AND contactName=? AND contactDeviceId!=?;" andArguments:@[@(MLOmemoInternalNotTrusted), self.accountID, jid, @(self.deviceid)]];
+            [[MLContact createContactFromJid:jid andAccountID:self.accountID] activateExplicitOmemoTrust];
+        }];
+    }
+}
+
+-(NSNumber*) getTrustLevel:(SignalAddress*) address identityKey:(NSData*) identityKey
+{
+    return [self.sqliteDatabase idReadTransaction:^{
+        DDLogVerbose(@"Getting trust level for: accountID=%@, deviceId=%@, name=%@, identityKey=%@", self.accountID, @(address.deviceId), address.name, identityKey);
+        
+        //check for identity key changes for known deviceids and reject these (legitimate new devices will always differ in both)
+        NSData* storedIdentity = [self getIdentityForAddress:address];
+        if(storedIdentity != nil && ![storedIdentity isEqual:identityKey])
+            return (id)@(MLOmemoNotTrusted);
+        
+        return [self.sqliteDatabase executeScalar:(@"SELECT \
+                CASE \
+                    WHEN (trustLevel=0) THEN 0 \
+                    WHEN (trustLevel=1 AND removedFromDeviceList IS NULL AND (lastReceivedMsg IS NULL OR unixepoch(lastReceivedMsg) >= unixepoch('now', '-90 day'))) THEN 100 \
+                    WHEN (trustLevel=1 AND removedFromDeviceList IS NOT NULL) THEN 101 \
+                    WHEN (trustLevel=1 AND removedFromDeviceList IS NULL AND (unixepoch(lastReceivedMsg) < unixepoch('now', '-90 day'))) THEN 102 \
+                    WHEN (COUNT(*)=0) THEN 100 \
+                    WHEN (trustLevel=2 AND removedFromDeviceList IS NULL AND (lastReceivedMsg IS NULL OR unixepoch(lastReceivedMsg) >= unixepoch('now', '-90 day'))) THEN 200 \
+                    WHEN (trustLevel=2 AND removedFromDeviceList IS NOT NULL) THEN 201 \
+                    WHEN (trustLevel=2 AND removedFromDeviceList IS NULL AND (unixepoch(lastReceivedMsg) < unixepoch('now', '-90 day'))) THEN 202 \
+                    ELSE 0 \
+                END \
+                FROM signalContactIdentity \
+                WHERE account_id=? AND contactDeviceId=? AND contactName=?; \
+                ") andArguments:@[self.accountID, @(address.deviceId), address.name]];
+    }];
+}
+
+-(BOOL) isExplicitlyTrusted:(NSString*) jid
+{
+    return [self.sqliteDatabase boolReadTransaction:^{
+        return [[self.sqliteDatabase executeScalar:@"SELECT CASE \
+                WHEN COUNT(contactDeviceId) == 0 THEN 0 \
+                ELSE 1 \
+            END \
+            FROM signalContactIdentity \
+            WHERE \
+                account_id=? \
+                AND contactName=? \
+                AND trustLevel!=1 \
+        ;" andArguments:@[self.accountID, jid]] boolValue];
+    }];
+}
+
+// MUC session management
+
+// return true if we found at least one fingerprint for the given buddyJid
+-(BOOL) sessionsExistForBuddy:(NSString*) buddyJid
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        NSNumber* contactDevicesExist = [self.sqliteDatabase executeScalar:@"SELECT COUNT(contactDeviceId) FROM signalContactIdentity WHERE account_id=? AND contactName=?;" andArguments:@[self.accountID, buddyJid]];
+        return (BOOL)(contactDevicesExist.intValue > 0);
+    }];
+}
+
+// delete the fingerprints and session for the given buddyJid if the jid is neither a 1:1 buddy nor a group member
+-(BOOL) checkIfSessionIsStillNeeded:(NSString*) buddyJid
+{
+    return [self.sqliteDatabase boolWriteTransaction:^{
+        // delete fingerprints from buddyJid if the buddyJid is neither a buddy, a self chat, nor a group member
+        NSNumber* buddyJidCnt = [self.sqliteDatabase executeScalar:@"SELECT \
+                (bCnt.buddyListCnt + mucCnt.roomCnt + accountCnt) \
+            FROM \
+                ( \
+                    SELECT \
+                        COUNT(buddy_name) AS buddyListCnt \
+                    FROM buddylist \
+                    WHERE \
+                        account_id=? \
+                        AND buddy_name=? \
+                        AND Muc=0 \
+                ) AS bCnt, \
+                ( \
+                    SELECT \
+                        COUNT(m.room) AS roomCnt \
+                    FROM muc_members AS m \
+                    INNER JOIN buddylist AS b \
+                    ON m.account_id = b.account_id \
+                    AND b.buddy_name = m.member_jid \
+                    WHERE \
+                        b.account_id=? \
+                        AND m.member_jid=? \
+                        AND b.Muc=1 \
+                        AND b.muc_type='group' \
+                ) AS mucCnt, \
+                ( \
+                    SELECT \
+                        COUNT(account_id) AS accountCnt \
+                    FROM account \
+                    WHERE \
+                        (username || '@' || domain) = ? \
+                        AND account_id = ? \
+                ) AS accountCnt" andArguments:@[self.accountID, buddyJid, self.accountID, buddyJid, self.accountID, buddyJid]];
+
+        BOOL buddyStillNeeded = buddyJidCnt.intValue > 0;
+        if(buddyStillNeeded == NO)
+            [self markAllDevicesAsDeletedForAddressName:buddyJid];  // queue old devices and sessions for graceful deletion
+        return buddyStillNeeded;
+    }];
+}
+
+// delete all fingerprints and sessions from contacts that are neither a buddy nor a group member
+// return jids of dangling sessions
+-(NSSet<NSString*>*) removeDanglingMucSessions
+{
+    return [self.sqliteDatabase idWriteTransaction:^{
+        // create a list of all sessions
+        NSArray<NSString*>* jidsWithSession = [self.sqliteDatabase executeScalarReader:@"SELECT DISTINCT contactName \
+                FROM signalContactIdentity \
+                WHERE \
+                account_id = ? \
+        " andArguments:@[self.accountID]];
+        NSMutableSet<NSString*>* danglingJids = [NSMutableSet new];
+        for(NSString* jid in jidsWithSession) {
+            // check if the session is still needed
+            if([self checkIfSessionIsStillNeeded:jid] == NO) {
+                [danglingJids addObject:jid];
+                [self markAllDevicesAsDeletedForAddressName:jid];   // queue old devices and sessions for graceful deletion
+            }
+        }
+        return danglingJids;
+    }];
+}
+
+/**
+ * Store a serialized sender key record for a given
+ * (groupId + senderId + deviceId) tuple.
+ */
+-(BOOL) storeSenderKey:(nonnull NSData*) senderKey address:(nonnull SignalAddress*) address groupId:(nonnull NSString*) groupId;
+{
+    return false;
+}
+
+/**
+ * Returns a copy of the sender key record corresponding to the
+ * (groupId + senderId + deviceId) tuple.
+ */
+- (nullable NSData*) loadSenderKeyForAddress:(SignalAddress*) address groupId:(NSString*) groupId;
+{
+    return nil;
+}
+
+@end

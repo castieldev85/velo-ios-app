@@ -1,0 +1,23 @@
+os: osx
+language: objective-c
+xcode_workspace: Monal.xcworkspace
+xcode_scheme: Monal
+xcode_destination: platform=iOS Simulator,name=iPhone 11 Pro
+osx_image: xcode12.5
+podfile: Podfile
+before_install:
+  - cd Monal
+  - gem install cocoapods
+  - git submodule update --init --recursive
+  - git submodule update --remote --merge
+install:
+  - pod install
+script:
+  - set -o pipefail && xcodebuild -workspace "Monal.xcworkspace" -scheme "Monal" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 11 Pro' test | xcpretty
+branches:
+  except:
+    - alpha.build
+notifications:
+  email:
+    on_success: never # default: change
+    on_failure: always # default: always

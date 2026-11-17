@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+    "sdp-to-jingle",
+    "monal-panic-handler",
+    "monal-rust-swift-bridge",
+    "monal-html-parser",
+]
+
+resolver = "2"

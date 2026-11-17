@@ -1,0 +1,142 @@
+//
+//  MLMessage.h
+//  Monal
+//
+//  Created by Anurodh Pokharel on 11/27/19.
+//  Copyright © 2019 Monal.im. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+@protocol MLContactProtocol;
+@class xmpp;
+@class MLContact;
+@class MLReactionsEntry;
+@class MLFiletransferInfo;
+
+/**
+ message object intended to be passed around and eventually used to render
+ */
+@interface MLMessage : NSObject <NSSecureCoding>
+
++(MLMessage*) createMessageFromHistoryID:(NSNumber*) historyID;
++(NSArray<MLMessage*>*) createMessagesFromHistoryIDs:(NSArray<NSNumber*>*) historyIDs;
++(MLMessage*) createNewStatusMessageForContact:(MLContact*) contact withText:(NSString*) text;
+-(void) deleteLocally;
+
++(BOOL) supportsSecureCoding;
+
+@property (readonly) NSString* id;     //for Identifiable protocol
+
+/**
+ account number in the database should be an integer
+ */
+@property (nonatomic, copy) NSNumber* accountID;
+
+/**
+  jid of the contact that this msg corresponds to
+ */
+@property (nonatomic, copy) NSString* buddyName;
+
+/**
+  indicating if the message was send from buddyName
+ */
+@property (nonatomic, assign) BOOL inbound;
+
+/**
+ The message's local  unique identifier
+ */
+@property (nonatomic, copy) NSString* messageId;
+
+/**
+ The id for the message as provided by the xmpp server
+ */
+@property (nonatomic, copy) NSString* _Nullable stanzaId;
+
+/**
+The of the message in the DB , should be int
+ */
+@property (nonatomic, copy) NSNumber* messageDBId;
+
+/**
+ Actual sender will differ from the "from" when in a group chat
+ */
+@property (nonatomic, copy) NSString* actualFrom;
+@property (nonatomic, readonly) BOOL isMuc;
+@property (nonatomic, readonly) NSString* contactDisplayName;
+
+@property (nonatomic, copy) NSString* messageType;
+@property (nonatomic, readonly) NSString* mucType;
+@property (nonatomic, copy) NSString* _Nullable participantJid;
+@property (nonatomic, copy) NSString* _Nullable occupantId;
+
+@property (nonatomic, readonly) MLFiletransferInfo* fileInfo;
+
+@property (nonatomic, copy) NSString* messageText;
+
+@property (nonatomic, copy) NSArray<MLReactionsEntry*>* reactions;
+
+@property (nonatomic, assign) BOOL retracted;
+
+/**
+ Sometimes a message is deleted from the db, but its MLMessage instance remains in memory
+ e.g. when a filetransfer message is deleted while its file is being downloaded.
+ This property allows handling thoses cases properly.
+ */
+@property (nonatomic, assign) BOOL deletedLocally;
+
+//TODO: remove, once our old chatview gets removed
+@property (nonatomic, copy) NSURL* url;
+
+/**
+ path to preview image for image type
+ */
+@property (nonatomic, copy) NSURL* _Nullable previewImage;
+@property (nonatomic, copy) NSString* _Nullable previewText;
+
+@property (nonatomic, copy) NSDate* timestamp;
+
+/*
+ usually used to indicate if the message was  encrypted on the wire, not in this payload
+ */
+@property (nonatomic, assign) BOOL encrypted;
+
+/*
+ whether the text was acked by the server
+ */
+@property (nonatomic, assign) BOOL hasBeenSent;
+
+/*
+ Whether a message was recieved by the device on the other end
+ */
+@property (nonatomic, assign) BOOL hasBeenReceived;
+@property (nonatomic, assign) BOOL hasBeenDisplayed;
+
+/**
+ values only set if in a response the message was marked as error.
+ if hasBeenReceived is true, these should be ignored
+ */
+@property (nonatomic, copy) NSString* _Nullable errorType;
+@property (nonatomic, copy) NSString* _Nullable errorReason;
+
+/*
+ the message has not been marked as read in the db
+ */
+@property (nonatomic, assign) BOOL unread;
+@property (nonatomic, assign) BOOL displayMarkerWanted;
+
+@property (nonatomic, readonly) xmpp* _Nullable account;
+@property (nonatomic, readonly) id<MLContactProtocol> contact;
+@property (nonatomic, readonly) MLContact* chatContact;
+
+-(BOOL) isEqualToContact:(id<MLContactProtocol>) contact;
+-(BOOL) isEqualToMessage:(MLMessage*) message;
+-(BOOL) isEqual:(id _Nullable) object;
+
+@property (strong, readonly) NSString* description;
+
+@end
+
+NS_ASSUME_NONNULL_END

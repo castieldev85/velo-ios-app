@@ -1,0 +1,69 @@
+//
+//  MLOMEMO.h
+//  Monal
+//
+//  Created by Friedrich Altheide on 21.06.20.
+//  Copyright © 2020 Monal.im. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+#import <monalxmpp/OmemoState.h>
+#import <monalxmpp/MLSignalStore.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+@class MLSignalStore;
+@class SignalAddress;
+@class xmpp;
+@class XMPPMessage;
+@class XMPPIQ;
+@class MLXMLNode;
+
+@interface MLOMEMO : NSObject
+@property (nonatomic, strong) OmemoState* state;
+@property (nonatomic) unsigned long openBundleFetchCnt;
+@property (nonatomic) unsigned long closedBundleFetchCnt;
+
+-(MLOMEMO*) initWithAccount:(xmpp*) account;
+-(void) activate;
+
+/*
+ * encrypting / decrypting messages
+ */
+-(MLXMLNode* _Nullable) encryptString:(NSString* _Nullable) message toDeviceids:(NSDictionary<NSString*, NSSet<NSNumber*>*>*) contactDeviceMap;
+-(void) encryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message toContact:(NSString*) toContact;
+-(NSString* _Nullable) decryptOmemoEnvelope:(MLXMLNode*) envelope forSenderJid:(NSString*) senderJid inMuc:(NSString* _Nullable) mucJid andReturnErrorString:(BOOL) returnErrorString;
+-(NSString* _Nullable) decryptMessage:(XMPPMessage*) messageNode withMucParticipantJid:(NSString* _Nullable) mucParticipantJid;
+
+//VELO PQ: OMEMO2 post-quantistico compatibile con la Velo Android (urn:velo:omemo-pq:1)
+//0 = il contatto non usa la Velo PQ (si usa l'OMEMO di Monal), 1 = cifrato PQ, 2 = bloccato (chiavi PQ non ancora pronte: NON inviare)
+-(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message toContact:(NSString*) toContact;
+-(NSDictionary* _Nullable) veloPQDecryptMessage:(XMPPMessage*) messageNode;
+-(void) veloPQFetchDevicelistOf:(NSString*) jid;
+
+-(NSSet<NSNumber*>*) knownDevicesForAddressName:(NSString*) addressName;
+-(NSSet<NSNumber*>*) knownDevicesForAddressName:(NSString*) addressName withRemovedDevices:(BOOL) removed;
+-(BOOL) isTrustedIdentity:(SignalAddress*)address identityKey:(NSData*) identityKey;
+-(void) addIdentityManually:(SignalAddress*) address identityKey:(NSData* _Nonnull) identityKey;
+-(void) updateTrust:(BOOL) trust forAddress:(SignalAddress*) address;
+-(NSNumber*) getTrustLevel:(SignalAddress*) address identityKey:(NSData*)identityKey;
+-(BOOL) isExplicitlyTrusted:(NSString*) jid;
+-(NSDate*) getLastSuccessfulDecryptTime:(SignalAddress*) address;
+-(NSDate* _Nullable) getRemovedFromDevicelistTime:(SignalAddress* _Nonnull) address;
+-(NSNumber* _Nullable) getTrustLevelForJid:(NSString*) jid andDeviceId:(NSNumber*) deviceid;
+-(NSData*) getIdentityForAddress:(SignalAddress*) address;
+-(BOOL) isSessionBrokenForJid:(NSString*) jid andDeviceId:(NSNumber*) rid;
+-(void) deleteDeviceForSource:(NSString*) source andRid:(NSNumber*) rid;
+-(void) forceDeleteDeviceForSource:(NSString*) source andRid:(NSNumber*) rid;
+
+-(void) subscribeAndFetchDevicelistIfNoSessionExistsForJid:(NSString*) buddyJid;
+-(void) checkIfSessionIsStillNeeded:(NSString*) buddyJid isMuc:(BOOL) isMuc;
+-(NSNumber*) getDeviceId;
+
+-(void) untrustAllDevicesFrom:(NSString*) jid;
+
+//debug button in contactdetails ui
+-(void) clearAllSessionsForJid:(NSString*) jid;
+@end
+
+NS_ASSUME_NONNULL_END

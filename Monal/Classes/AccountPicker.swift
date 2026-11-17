@@ -1,0 +1,64 @@
+//
+//  AccountPicker.swift
+//  Monal
+//
+//  Created by Thilo Molitor on 20.01.23.
+//  Copyright © 2023 monal-im.org. All rights reserved.
+//
+
+struct AccountPicker: View {
+    let contacts: [MLContact]
+    let callType: MLCallType
+#if IS_ALPHA
+    let appLogoId = ImageResource.alphaAppLogo
+#else
+    let appLogoId = ImageResource.appLogo
+#endif
+    
+    init(contacts:[MLContact], callType: MLCallType) {
+        self.contacts = contacts
+        self.callType = callType
+    }
+    
+    var body: some View {
+        //ScrollView {
+            VStack {
+                HStack () {
+                    Image(appLogoId)
+                        .resizable()
+                        .frame(width: CGFloat(120), height: CGFloat(120), alignment: .center)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding()                    
+                    Text("You are trying to call '\(contacts.first!.contactDisplayName)' (\(contacts.first!.contactJid)), but this contact can be reached using different accounts. Please select the account you want to place the outgoing call with.")
+                        .padding()
+                        .padding(.leading, -16.0)
+                }
+                .frame(maxWidth: .infinity)
+                .background(Color(UIColor.systemBackground))
+                
+                List {
+                    ForEach(contacts) { contact in
+                        if let accountEntry = DataLayer.sharedInstance().details(forAccount:contact.accountID) {
+                            let accountJid = "\(accountEntry["username"] ?? "<unknown>" as NSString)@\(accountEntry["domain"] ?? "<unknown>" as NSString)"
+                            let accountContact = MLContact.createContact(fromJid:accountJid, andAccountID:accountEntry["account_id"] as! NSNumber)
+                            Button {
+                                (UIApplication.shared.delegate as! MonalAppDelegate).activeChats!.call(contact, with:callType)
+                            } label: {
+                                ContactEntry(contact:accountContact, selfnotesPrefix:false)
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+            }
+        //}
+        .textFieldStyle(.roundedBorder)
+        .navigationBarTitle(Text("Account Picker"))
+    }
+}
+
+struct AccountPicker_Previews: PreviewProvider {
+    static var previews: some View {
+        AccountPicker(contacts:[MLContact.makeDummyContact(0)], callType:.audio)
+    }
+}

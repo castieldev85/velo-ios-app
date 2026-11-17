@@ -1,0 +1,942 @@
+//
+//  MLContact.m
+//  Monal
+//
+//  Created by Anurodh Pokharel on 11/27/19.
+//  Copyright © 2019 Monal.im. All rights reserved.
+//
+
+#import <monalxmpp/MLContact.h>
+#import <monalxmpp/MLChannelContact.h>
+#import <monalxmpp/MLMessage.h>
+#import <monalxmpp/HelperTools.h>
+#import <monalxmpp/DataLayer.h>
+#import <monalxmpp/xmpp.h>
+#import <monalxmpp/MLXMPPManager.h>
+#import <monalxmpp/MLOMEMO.h>
+#import <monalxmpp/MLNotificationQueue.h>
+#import <monalxmpp/MLImageManager.h>
+#import <monalxmpp/MLVoIPProcessor.h>
+#import <monalxmpp/MLMucProcessor.h>
+#import <monalxmpp/MLDelayedDealloc.h>
+#import "MonalAppDelegate.h"
+
+@import Intents;
+
+NSString* const kSubBoth = @"both";
+NSString* const kSubNone = @"none";
+NSString* const kSubTo = @"to";
+NSString* const kSubFrom = @"from";
+NSString* const kSubRemove = @"remove";
+NSString* const kSubNotListedLocally = @"notListedLocally";
+NSString* const kAskSubscribe = @"subscribe";
+
+static NSMutableDictionary* _singletonCache;
+
+@interface MLMucProcessor ()
+-(void) updateBookmarks;
+@end
+
+@interface MLContact ()
+{
+    NSInteger _unreadCount;
+    monal_void_block_t _cancelNickChange;
+    monal_void_block_t _cancelFullNameChange;
+    UIImage* _avatar;
+    NSMutableDictionary<NSString*, NSString*>* _contactDisplayNameCache;
+}
+@property (nonatomic, assign) BOOL isSelf;
+@property (nonatomic, assign) BOOL isInRoster;
+@property (nonatomic, assign) BOOL isSubscribedTo;
+@property (nonatomic, assign) BOOL isSubscribedFrom;
+@property (nonatomic, assign) BOOL hasIncomingContactRequest;
+
+@property (nonatomic, strong) NSNumber* accountID;
+@property (nonatomic, strong) NSString* contactJid;
+@property (nonatomic, strong) NSString* fullName;
+@property (nonatomic, strong) NSString* nickName;
+@property (nonatomic, strong) xmpp* account;
+@property (nonatomic, strong) NSSet<NSString*>* rosterGroups;
+
+@property (nonatomic, strong) NSDate* _Nullable lastInteractionTime;
+@property (nonatomic, assign) BOOL isTyping;
+
+@property (nonatomic, assign) NSInteger unreadCount;
+
+@property (nonatomic, assign) BOOL isPinned;
+@property (nonatomic, assign) BOOL isBlocked;
+@property (nonatomic, assign) BOOL isMuted;
+@property (nonatomic, assign) BOOL isActiveChat;
+
+@property (nonatomic, assign) BOOL isMuc;
+@property (nonatomic, strong) NSString* groupSubject;
+@property (nonatomic, strong) NSString* mucType;
+@property (nonatomic, strong) NSString* accountNickInGroup;
+@property (nonatomic, assign) BOOL isMentionOnly;
+
+@property (nonatomic, strong) NSString* subscription;
+@property (nonatomic, strong) NSString* ask;
+
+@property (nonatomic, strong) NSString* contactDisplayName;
+@property (nonatomic, assign) BOOL hasReachedMamArchiveTop;
+@property (nonatomic, assign) BOOL hasExplicitOmemoTrustActivated;
+@end
+
+@implementation MLContact
+
++(void) initialize
+{
+    _singletonCache = [NSMutableDictionary new];
+}
+
++(MLContact*) makeDummyContact:(int) type
+{
+    if(type == 1)
+    {
+        return [self contactFromDictionary:@{
+            @"buddy_name": @"user@example.org",
+            @"nick_name": @"",
+            @"full_name": @"",
+            @"subscription": kSubBoth,
+            @"ask": @"",
+            @"account_id": @1,
+            //@"muc_subject": nil,
+            //@"muc_nick": nil,
+            @"Muc": @NO,
+            @"pinned": @NO,
+            @"encrypt": @NO,
+            @"muted": @NO,
+            @"status": @"",
+            @"state": @"online",
+            @"count": @1,
+            @"isActiveChat": @YES,
+            @"lastInteraction": [[NSDate date] initWithTimeIntervalSince1970:0],
+            @"rosterGroups": [NSSet new],
+            @"reached_mam_archive_top": @NO,
+            @"explicit_omemo_trust_activated": @NO,
+        }];
+    }
+    else if(type == 2)
+    {
+        return [self contactFromDictionary:@{
+            @"buddy_name": @"group@example.org",
+            @"nick_name": @"",
+            @"full_name": @"Die coole Gruppe",
+            @"subscription": kSubBoth,
+            @"ask": @"",
+            @"account_id": @1,
+            //@"muc_subject": nil,
+            @"muc_nick": @"my_group_nick",
+            @"muc_type": kMucTypeGroup,
+            @"Muc": @YES,
+            @"pinned": @NO,
+            @"encrypt": @NO,
+            @"muted": @NO,
+            @"status": @"",
+            @"state": @"online",
+            @"count": @2,
+            @"isActiveChat": @YES,
+            @"lastInteraction": [[NSDate date] initWithTimeIntervalSince1970:1640153174],
+            @"rosterGroups": [NSSet new],
+            @"reached_mam_archive_top": @NO,
+            @"explicit_omemo_trust_activated": @NO,
+        }];
+    }
+    else if(type == 3)
+    {
+        return [self contactFromDictionary:@{
+            @"buddy_name": @"channel@example.org",
+            @"nick_name": @"",
+            @"full_name": @"Der coolste Channel überhaupt",
+            @"subscription": kSubBoth,
+            @"ask": @"",
+            @"account_id": @1,
+            //@"muc_subject": nil,
+            @"muc_nick": @"my_channel_nick",
+            @"muc_type": kMucTypeChannel,
+            @"Muc": @YES,
+            @"pinned": @NO,
+            @"encrypt": @NO,
+            @"muted": @NO,
+            @"status": @"",
+            @"state": @"online",
+            @"count": @3,
+            @"isActiveChat": @YES,
+            @"lastInteraction": [[NSDate date] initWithTimeIntervalSince1970:1640157074],
+            @"rosterGroups": [NSSet new],
+            @"reached_mam_archive_top": @NO,
+            @"explicit_omemo_trust_activated": @NO,
+        }];
+    }
+    else
+    {
+        return [self contactFromDictionary:@{
+            @"buddy_name": @"user2@example.org",
+            @"nick_name": @"",
+            @"full_name": @"Zweiter User mit Roster Name",
+            @"subscription": kSubBoth,
+            @"ask": @"",
+            @"account_id": @1,
+            //@"muc_subject": nil,
+            //@"muc_nick": nil,
+            @"Muc": @NO,
+            @"pinned": @NO,
+            @"encrypt": @NO,
+            @"muted": @NO,
+            @"status": @"",
+            @"state": @"online",
+            @"count": @4,
+            @"isActiveChat": @YES,
+            @"lastInteraction": [[NSDate date] initWithTimeIntervalSince1970:1640157174],
+            @"rosterGroups": [NSSet new],
+            @"reached_mam_archive_top": @NO,
+            @"explicit_omemo_trust_activated": @NO,
+        }];
+    }
+}
+
++(BOOL) supportsSecureCoding
+{
+    return YES;
+}
+
++(NSString*) ownDisplayNameForAccount:(xmpp*) account
+{
+    NSDictionary* accountDic = [[DataLayer sharedInstance] detailsForAccount:account.accountID];
+    NSString* displayName = accountDic[kRosterName];
+    DDLogVerbose(@"Own nickname in accounts table %@: '%@'", account.accountID, displayName);
+    if(!displayName || !displayName.length)
+    {
+        // default is local part, see https://docs.modernxmpp.org/client/design/#contexts
+        NSDictionary* jidParts = [HelperTools splitJid:account.connectionProperties.identity.jid];
+        displayName = jidParts[@"node"];
+        if(!displayName || !displayName.length)
+        {
+            //if the node is empty, use the host instead, this should NEVER be empty
+            displayName = jidParts[@"host"];
+        }
+    }
+    DDLogVerbose(@"Calculated ownDisplayName for '%@': %@", account.connectionProperties.identity.jid, displayName);
+    return emptyDefault(displayName, @"", @"?");        //should never trigger, but just to be sure
+}
+
++(MLContact*) createContactFromDatabaseWithJid:(NSString*) jid andAccountID:(NSNumber*) accountID
+{
+    NSDictionary* contactDict = [[DataLayer sharedInstance] contactDictionaryForUsername:jid forAccount:accountID];
+    MLContact* retval;
+    // check if we know this contact and return a dummy one if not
+    if(contactDict == nil)
+    {
+        DDLogInfo(@"Returning dummy MLContact for %@ on accountID %@", jid, accountID);
+        xmpp* account = [[MLXMPPManager sharedInstance] getEnabledAccountForID:accountID];
+        retval = [self contactFromDictionary:@{
+            @"buddy_name": jid.lowercaseString,
+            @"nick_name": @"",
+            @"full_name": @"",
+            @"subscription": kSubNotListedLocally,
+            @"ask": @"",
+            @"account_id": accountID,
+            //@"muc_subject": nil,
+            //@"muc_nick": nil,
+            @"Muc": @NO,
+            @"mentionOnly": @NO,
+            @"pinned": @NO,
+            @"encrypt": @NO,
+            @"muted": @NO,
+            @"status": @"",
+            @"state": @"offline",
+            @"count": @0,
+            @"isActiveChat": @NO,
+            @"lastInteraction": nilWrapper(nil),
+            @"rosterGroups": [NSSet set],
+            @"reached_mam_archive_top": @NO,
+            @"explicit_omemo_trust_activated": account == nil ? @NO : @([account.omemo isExplicitlyTrusted:jid]),
+        }];
+    }
+    else
+    {
+        retval = [self contactFromDictionary:contactDict];
+    }
+    //initialize the blocking state, which is not stored in the buddylist table
+    retval.isBlocked = [[DataLayer sharedInstance] isBlockedContact:retval];
+    return retval;
+}
+
++(MLContact*) createContactFromJid:(NSString*) jid andAccountID:(NSNumber*) accountID
+{
+    MLAssert(jid != nil, @"jid must not be nil");
+    MLAssert(accountID != nil && accountID.intValue >= 0, @"accountID must not be nil and > 0");
+    
+    NSString* cacheKey = [NSString stringWithFormat:@"%@|%@", accountID, jid];
+    @synchronized(_singletonCache) {
+        if(_singletonCache[cacheKey] != nil)
+        {
+            MLContact* obj = ((WeakContainer*)_singletonCache[cacheKey]).obj;
+            if(obj != nil)
+                return obj;
+            else
+                [_singletonCache removeObjectForKey:cacheKey];
+        }
+        
+        MLContact* retval = [self createContactFromDatabaseWithJid:jid andAccountID:accountID];
+        _singletonCache[cacheKey] = [WeakContainer for:retval];
+        
+        //only deallocate once per second to not rapidly create and dealloc MLContact objects
+        [MLDelayedDealloc delayFor:retval];
+        
+        return retval;
+    }
+}
+
+-(instancetype) init
+{
+    self = [super init];
+    _contactDisplayNameCache = [NSMutableDictionary new];
+    
+    //watch for all sorts of changes and update our singleton dynamically
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLastInteractionTimeUpdate:) name:kMonalLastInteractionUpdatedNotice object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleBlockListRefresh:) name:kMonalBlockListRefresh object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh) name:kMonalRefresh object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleContactRefresh:) name:kMonalContactRefresh object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleContactRefresh:) name:kMonalContactRemoved object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleContactRefresh:) name:kMonalContactHistoryCleared object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleMucSubjectChange:) name:kMonalMucSubjectChanged object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateUnreadCount) name:kMonalNewMessageNotice object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateUnreadCount) name:kMonalUpdatedMessageNotice object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateUnreadCount) name:kMonalDeletedMessageNotice object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateUnreadCount) name:kMLMessageSentToContact object:nil];
+    
+    return self;
+}
+
+-(void) dealloc
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+-(void) handleLastInteractionTimeUpdate:(NSNotification*) notification
+{
+    NSDictionary* data = notification.userInfo;
+    NSNumber* notificationAccountID = data[@"accountID"];
+    
+    if(![self.contactJid isEqualToString:data[@"jid"]] || self.accountID.intValue != notificationAccountID.intValue)
+        return;     // ignore other accounts or contacts
+    
+    self.isTyping = [data[@"isTyping"] boolValue];
+    
+    if(data[@"lastInteraction"] == nil)
+        return;
+    //this will be nil if "urn:xmpp:idle:1" is not supported by any of the contact's devices
+    DDLogVerbose(@"Updating lastInteractionTime=%@ of %@", data[@"lastInteraction"], self);
+    self.lastInteractionTime = nilExtractor(data[@"lastInteraction"]);
+}
+
+-(void) handleBlockListRefresh:(NSNotification*) notification
+{
+    NSDictionary* data = notification.userInfo;
+    NSNumber* notificationAccountID = data[@"accountID"];
+    if(self.accountID.intValue != notificationAccountID.intValue)
+        return;         // ignore other accounts
+    self.isBlocked = [[DataLayer sharedInstance] isBlockedContact:self];
+    DDLogInfo(@"Updated the blocking state of contact %@ => isBlocked=%@", self, bool2str(self.isBlocked));
+}
+
+-(void) handleContactRefresh:(NSNotification*) notification
+{
+    NSDictionary* data = notification.userInfo;
+    MLContact* contact = data[@"contact"];
+    if(![self.contactJid isEqualToString:contact.contactJid] || self.accountID.intValue != contact.accountID.intValue)
+        return;     // ignore other accounts or contacts
+    [self refresh];
+    [self updateUnreadCount];
+    //only handle avatar updates if the property was already used and the old avatar is cached in this contact
+    if(_avatar != nil)
+    {
+        UIImage* newAvatar = [[MLImageManager sharedInstance] getIconForContact:self];
+        if(newAvatar != self->_avatar)
+        {
+            DDLogDebug(@"Setting new avatar for %@", self);
+            self.avatar = newAvatar;            //use self.avatar instead of _avatar to make sure KVO works properly
+        }
+    }
+}
+
+-(void) handleMucSubjectChange:(NSNotification*) notification
+{
+    xmpp* account = notification.object;
+    NSString* room = notification.userInfo[@"room"];
+    NSString* subject = notification.userInfo[@"subject"];
+    if(![self.contactJid isEqualToString:room] || self.accountID.intValue != account.accountID.intValue)
+        return;     // ignore other accounts or contacts
+    self.groupSubject = nilDefault(subject, @"");
+}
+
+-(void) refresh
+{
+    [self updateWithContact:[[self class] createContactFromDatabaseWithJid:self.contactJid andAccountID:self.accountID]];
+}
+
+-(void) updateUnreadCount
+{
+    _unreadCount = -1;      // mark it as "uncached" --> will be recalculated on next access
+}
+
+-(NSString*) contactDisplayNameWithFallback:(NSString* _Nullable) fallbackName;
+{
+    return [self contactDisplayNameWithFallback:fallbackName andSelfnotesPrefix:YES];
+}
+    
+-(NSString*) contactDisplayNameWithFallback:(NSString* _Nullable) fallbackName andSelfnotesPrefix:(BOOL) hasSelfnotesPrefix
+{
+    NSString* cacheKey = [NSString stringWithFormat:@"%@|%@|%@|%@|%@", self.nickName, self.fullName, self.contactJid, fallbackName, bool2str(hasSelfnotesPrefix)];
+    @synchronized(_contactDisplayNameCache) {
+        if(_contactDisplayNameCache[cacheKey] != nil)
+            return _contactDisplayNameCache[cacheKey];
+    }
+    
+    //DDLogVerbose(@"Calculating contact display name...");
+    NSString* displayName;
+    if(!self.isSelf)
+    {
+        if(fallbackName == nil)
+        {
+            //default is local part, see https://docs.modernxmpp.org/client/design/#contexts
+            NSDictionary* jidParts = [HelperTools splitJid:self.contactJid];
+            fallbackName = jidParts[@"host"];
+            if(jidParts[@"node"] != nil)
+                fallbackName = jidParts[@"node"];
+        }
+        
+        if(self.nickName && self.nickName.length > 0)
+        {
+            //DDLogVerbose(@"Using nickName: %@", self.nickName);
+            displayName = self.nickName;
+        }
+        else if(self.fullName && self.fullName.length > 0)
+        {
+            //DDLogVerbose(@"Using fullName: %@", self.fullName);
+            displayName = self.fullName;
+        }
+        else
+        {
+            //DDLogVerbose(@"Using fallback: %@", fallbackName);
+            displayName = fallbackName;
+        }
+    }
+    else
+    {
+        xmpp* account = self.account;
+        if(hasSelfnotesPrefix)
+        {
+            //add "Note to self: " prefix for selfchats
+            if([[DataLayer sharedInstance] enabledAccountCnts].intValue > 1)
+                displayName = [NSString stringWithFormat:NSLocalizedString(@"Notes to self: %@", @""), [[self class] ownDisplayNameForAccount:account]];
+            else
+                displayName = NSLocalizedString(@"Notes to self", @"");
+        }
+        else
+            displayName = [[self class] ownDisplayNameForAccount:account];
+    }
+    
+    DDLogVerbose(@"Calculated contactDisplayName for '%@': %@", self.contactJid, displayName);
+    MLAssert(displayName != nil, @"Display name should never be nil!", (@{
+        @"jid": nilWrapper(self.contactJid),
+        @"nickName": nilWrapper(self.nickName),
+        @"fullName": nilWrapper(self.fullName),
+        @"fallbackName": nilWrapper(fallbackName)
+    }));
+    
+    @synchronized(_contactDisplayNameCache) {
+        _contactDisplayNameCache[cacheKey] = displayName;
+    }
+    return displayName;
+}
+
+-(NSString*) contactDisplayName
+{
+    return [self contactDisplayNameWithFallback:nil];
+}
+
++(NSSet*) keyPathsForValuesAffectingContactDisplayName
+{
+    return [NSSet setWithObjects:@"nickName", @"fullName", @"contactJid", nil];
+}
+
+-(NSString*) contactDisplayNameWithoutSelfnotesPrefix
+{
+    return [self contactDisplayNameWithFallback:nil andSelfnotesPrefix:NO];
+}
+
++(NSSet*) keyPathsForValuesAffectingContactDisplayNameWithoutSelfnotesPrefix
+{
+    return [NSSet setWithObjects:@"nickName", @"fullName", @"contactJid", nil];
+}
+
+-(NSString*) nickNameView
+{
+    return nilDefault(self.nickName, @"");
+}
+
+-(void) setNickNameView:(NSString*) name
+{
+    if([self.nickName isEqualToString:name] || name == nil)
+        return;             //no change at all
+    self.nickName = name;
+    // abort old change timer and start a new one
+    if(_cancelNickChange)
+        _cancelNickChange();
+    // delay changes because we don't want to update the roster/bookmarks on our server too often while typing
+    if(self.isMuc)
+        _cancelNickChange = createTimer(2.0, (^{
+            xmpp* account = self.account;
+            [account.mucProcessor updateBookmarks];
+        }));
+    else
+        _cancelNickChange = createTimer(2.0, (^{
+            xmpp* account = self.account;
+            [account updateRosterItem:self withName:self.nickName];
+        }));
+}
+
++(NSSet*) keyPathsForValuesAffectingNickNameView
+{
+    return [NSSet setWithObjects:@"nickName", nil];
+}
+
+-(NSString*) fullNameView
+{
+    return nilDefault(self.fullName, @"");
+}
+
+-(void) setFullNameView:(NSString*) name
+{
+    MLAssert(self.isMuc, @"Using fullNameView only allowed for mucs!", (@{@"contact": self}));
+    if([self.fullName isEqualToString:name] || name == nil)
+        return;             //no change at all
+    self.fullName = name;
+    xmpp* account = self.account;
+    [[DataLayer sharedInstance] setFullName:self.fullName forContact:self.contactJid andAccount:account.accountID];
+    // abort old change timer and start a new one
+    if(_cancelFullNameChange)
+        _cancelFullNameChange();
+    // delay changes because we don't want to update the roster on our server too often while typing
+    _cancelFullNameChange = createTimer(2.0, (^{
+        [account.mucProcessor changeNameOfMuc:self.contactJid to:self.fullName];
+    }));
+}
+
++(NSSet*) keyPathsForValuesAffectingFullNameView
+{
+    return [NSSet setWithObjects:@"fullName", nil];
+}
+
+-(UIImage*) avatar
+{
+    // return already cached image
+    if(_avatar != nil)
+        return _avatar;
+    // load avatar from MLImageManager (use self.avatar instead of _avatar to make sure KVO works properly)
+    self.avatar = [[MLImageManager sharedInstance] getIconForContact:self];
+    return _avatar;
+}
+
+-(void) setAvatar:(UIImage*) avatar
+{
+    if(avatar != nil)
+        _avatar = avatar;
+    else
+        _avatar = [UIImage new];           //empty dummy image, to not save nil (should never happen, MLImageManager has default images)
+}
+
+-(BOOL) hasAvatar
+{
+    return [[MLImageManager sharedInstance] hasIconForContact:self];
+}
+
+-(BOOL) isSelf
+{
+    xmpp* account = self.account;
+    return [self.contactJid isEqualToString:account.connectionProperties.identity.jid];
+}
+
++(NSSet*) keyPathsForValuesAffectingIsSelf
+{
+    return [NSSet setWithObjects:@"contactJid", @"account", nil];
+}
+
+-(BOOL) isListedLocally
+{
+    //if this is a contact not in our database (not on our roster and not listed locally)
+    return self.isSelf || ![self.subscription isEqualToString:kSubNotListedLocally];
+}
+
++(NSSet*) keyPathsForValuesAffectingIsListedLocally
+{
+    return [NSSet setWithObjects:@"subscription", @"isSelf", nil];
+}
+
+-(BOOL) isInRoster
+{
+    //either we already allowed each other or we allow this contact and asked them to allow us
+    //--> if isInRoster is true this is displayed as "remove contact" in contact details, otherwise it will be displayed as "add contact"
+    //(mucs have a subscription of 'both', ensured by the datalayer)
+    return self.isSelf || [self.subscription isEqualToString:kSubBoth] || ([self.subscription isEqualToString:kSubFrom] && [self.ask isEqualToString:kAskSubscribe]);
+}
+
++(NSSet*) keyPathsForValuesAffectingIsInRoster
+{
+    return [NSSet setWithObjects:@"subscription", @"ask", @"isSelf", nil];
+}
+
+-(BOOL) isSubscribedTo
+{
+    return [self.subscription isEqualToString:kSubBoth]
+        || [self.subscription isEqualToString:kSubTo]
+        || self.isSelf;
+}
+
++(NSSet*) keyPathsForValuesAffectingIsSubscribedTo
+{
+    return [NSSet setWithObjects:@"subscription", @"isSelf", nil];
+}
+
+-(BOOL) isSubscribedFrom
+{
+    return [self.subscription isEqualToString:kSubBoth]
+        || [self.subscription isEqualToString:kSubFrom]
+        || self.isSelf;
+}
+
++(NSSet*) keyPathsForValuesAffectingIsSubscribedFrom
+{
+    return [NSSet setWithObjects:@"subscription", @"isSelf", nil];
+}
+
+-(BOOL) isSubscribedBoth
+{
+    return [self.subscription isEqualToString:kSubBoth] || self.isSelf;
+}
+
++(NSSet*) keyPathsForValuesAffectingIsSubscribedBoth
+{
+    return [NSSet setWithObjects:@"subscription", @"isSelf", nil];
+}
+
+-(BOOL) hasIncomingContactRequest
+{
+    return self.isMuc == NO && self.isSelf == NO && [[DataLayer sharedInstance] hasContactRequestForContact:self];
+}
+
++(NSSet*) keyPathsForValuesAffectingHasIncomingContactRequest
+{
+    return [NSSet setWithObjects:@"isMuc", @"isSelf", nil];
+}
+
+-(BOOL) hasOutgoingContactRequest
+{
+    return self.isMuc == NO && self.isSelf == NO && [self.ask isEqualToString:kAskSubscribe];
+}
+
++(NSSet*) keyPathsForValuesAffectingHasOutgoingContactRequest
+{
+    return [NSSet setWithObjects:@"isMuc", @"isSelf", @"ask", nil];
+}
+
+-(xmpp* _Nullable) account
+{
+    return [[MLXMPPManager sharedInstance] getEnabledAccountForID:self.accountID];
+}
+
++(NSSet*) keyPathsForValuesAffectingAccount
+{
+    return [NSSet setWithObject:@"accountID"];
+}
+
+// this will cache the unread count on first access
+-(NSInteger) unreadCount
+{
+    if(_unreadCount == -1)
+        _unreadCount = [[[DataLayer sharedInstance] countUserUnreadMessages:self.contactJid forAccount:self.accountID] integerValue];
+    return _unreadCount;
+}
+
+-(void) removeShareInteractions
+{
+    [INInteraction deleteInteractionsWithIdentifiers:@[[NSString stringWithFormat:@"%@|%@", self.accountID, self.contactJid]] completion:^(NSError* error) {
+        if(error != nil)
+            DDLogError(@"Could not delete all SiriKit interactions: %@", error);
+    }];
+}
+
+-(void) toggleMute:(BOOL) mute
+{
+    if(self.isMuted == mute)
+        return;
+    if(mute)
+        [[DataLayer sharedInstance] muteContact:self];
+    else
+        [[DataLayer sharedInstance] unMuteContact:self];
+    self.isMuted = mute;
+    if(self.isMuc)
+        [self.account.mucProcessor updateBookmarks];
+    // update active chats
+    //TODO: can be removed once our active chats are swiftui based (using the kvo observed model classes)
+    [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactRefresh object:self.account userInfo:@{
+        @"contact":self,
+    }];
+}
+
+-(void) toggleMentionOnly:(BOOL) mentionOnly
+{
+    if(!self.isMuc || self.isMentionOnly == mentionOnly)
+        return;
+    if(mentionOnly)
+        [[DataLayer sharedInstance] setMucAlertOnMentionOnly:self.contactJid onAccount:self.accountID];
+    else
+        [[DataLayer sharedInstance] setMucAlertOnAll:self.contactJid onAccount:self.accountID];
+    self.isMentionOnly = mentionOnly;
+    if(self.isMuc)
+        [self.account.mucProcessor updateBookmarks];
+    // update active chats
+    //TODO: can be removed once our active chats are swiftui based (using the kvo observed model classes)
+    [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactRefresh object:self.account userInfo:@{
+        @"contact":self,
+    }];
+}
+
+-(BOOL) toggleEncryption:(BOOL) encrypt
+{
+#ifdef DISABLE_OMEMO
+    return NO;
+#else
+    xmpp* account = self.account;
+    if(account == nil || account.omemo == nil)
+        return NO;
+    if(self.isMuc == NO)
+    {
+        NSSet* knownDevices = [account.omemo knownDevicesForAddressName:self.contactJid];
+        DDLogVerbose(@"Current isEncrypted=%@, encrypt=%@, knownDevices=%@", bool2str(self.isEncrypted), bool2str(encrypt), knownDevices);
+        if(!self.isEncrypted && encrypt && knownDevices.count == 0)
+        {
+            // request devicelist again
+            [account.omemo subscribeAndFetchDevicelistIfNoSessionExistsForJid:self.contactJid];
+            return NO;
+        }
+    }
+    else if([self.mucType isEqualToString:kMucTypeGroup] == NO)
+    {
+        return NO;
+    }
+    if(self.isEncrypted == encrypt)
+        return YES;
+    
+    if(encrypt)
+        [[DataLayer sharedInstance] encryptForJid:self.contactJid andAccountID:self.accountID];
+    else
+        [[DataLayer sharedInstance] disableEncryptForJid:self.contactJid andAccountID:self.accountID];
+    self.isEncrypted = encrypt;
+    return YES;
+#endif
+}
+
+-(void) togglePinnedChat:(BOOL) pinned
+{
+    if(self.isPinned == pinned)
+        return;
+    if(pinned)
+        [[DataLayer sharedInstance] pinChat:self.accountID andBuddyJid:self.contactJid];
+    else
+        [[DataLayer sharedInstance] unPinChat:self.accountID andBuddyJid:self.contactJid];
+    self.isPinned = pinned;
+    if(self.isMuc)
+        [self.account.mucProcessor updateBookmarks];
+    // update active chats
+    //TODO: can be removed once our active chats are swiftui based (using the kvo observed model classes)
+    if(self.account == nil)
+        return;
+    [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactRefresh object:self.account userInfo:@{@"contact":self, @"pinningChanged": @YES}];
+}
+
+-(BOOL) toggleBlocked:(BOOL) block
+{
+    if(self.isBlocked == block)
+        return YES;
+    xmpp* account = self.account;
+    if(account == nil)
+        return NO;
+    if(![account.connectionProperties.serverDiscoFeatures containsObject:@"urn:xmpp:blocking"])
+        return NO;
+    [[MLXMPPManager sharedInstance] block:block contact:self];
+    return YES;
+}
+
+-(void) removeFromRoster
+{
+    [[MLXMPPManager sharedInstance] removeContact:self];
+    [self removeShareInteractions];
+}
+
+-(void) addToRoster
+{
+    [[MLXMPPManager sharedInstance] addContact:self];
+}
+
+-(void) clearHistory
+{
+    [[DataLayer sharedInstance] clearMessagesWithBuddy:self.contactJid onAccount:self.accountID];
+    [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactHistoryCleared object:self.account userInfo:@{
+        @"contact": self,
+    }];
+}
+
+-(void) markReachedMamArchiveTop
+{
+    [[DataLayer sharedInstance] markReachedMamArchiveTopForContact:self];
+    self.hasReachedMamArchiveTop = YES;
+}
+
+-(void) activateExplicitOmemoTrust
+{
+    [[DataLayer sharedInstance] activateExplicitOmemoTrustForContact:self];
+    self.hasExplicitOmemoTrustActivated = YES;
+}
+
+#pragma mark - NSCoding
+
+-(void) encodeWithCoder:(NSCoder*) coder
+{
+    [coder encodeObject:self.contactJid forKey:@"contactJid"];
+    [coder encodeObject:self.accountID forKey:@"accountID"];
+}
+
+-(instancetype) initWithCoder:(NSCoder*) coder
+{
+    //only decode whats needed to access/create the right singleton object.
+    //decoding into a temporary object that will be discarded by the decoder
+    //once awakeAfterUsingCoder returns a new object
+    self = [self init];
+    self.contactJid = [coder decodeObjectForKey:@"contactJid"];
+    self.accountID = [coder decodeObjectForKey:@"accountID"];
+    return self;
+}
+
+//make sure this singleton remains a singleton, even after decoding
+-(instancetype) awakeAfterUsingCoder:(NSCoder*) coder
+{
+    return [[self class] createContactFromJid:self.contactJid andAccountID:self.accountID];
+}
+
+-(void) updateWithContact:(MLContact*) contact
+{
+    updateIfIdNotEqual(self.contactJid, contact.contactJid);
+    updateIfIdNotEqual(self.nickName, contact.nickName);
+    updateIfIdNotEqual(self.fullName, contact.fullName);
+    updateIfIdNotEqual(self.subscription, contact.subscription);
+    updateIfIdNotEqual(self.ask, contact.ask);
+    updateIfIdNotEqual(self.accountID, contact.accountID);
+    updateIfIdNotEqual(self.groupSubject, contact.groupSubject);
+    updateIfIdNotEqual(self.accountNickInGroup, contact.accountNickInGroup);
+    updateIfPrimitiveNotEqual(self.isMuc, contact.isMuc);
+    if(self.isMuc)
+        updateIfIdNotEqual(self.mucType, nilDefault(contact.mucType, kMucTypeChannel));
+    updateIfPrimitiveNotEqual(self.isMentionOnly, contact.isMentionOnly);
+    updateIfPrimitiveNotEqual(self.isPinned, contact.isPinned);
+    updateIfPrimitiveNotEqual(self.isBlocked, contact.isBlocked);
+    updateIfIdNotEqual(self.statusMessage, contact.statusMessage);
+    updateIfIdNotEqual(self.state, contact.state);
+    updateIfPrimitiveNotEqual(self->_unreadCount, contact->_unreadCount);
+    updateIfPrimitiveNotEqual(self.isActiveChat, contact.isActiveChat);
+    updateIfPrimitiveNotEqual(self.isEncrypted, contact.isEncrypted);
+    updateIfPrimitiveNotEqual(self.isMuted, contact.isMuted);
+    //don't update lastInteractionTime from contact, we dynamically update ourselves by handling kMonalLastInteractionUpdatedNotice
+    //updateIfIdNotEqual(self.lastInteractionTime, contact.lastInteractionTime);
+    updateIfIdNotEqual(self.rosterGroups, contact.rosterGroups);
+    updateIfPrimitiveNotEqual(self.hasReachedMamArchiveTop, contact.hasReachedMamArchiveTop);
+    updateIfPrimitiveNotEqual(self.hasExplicitOmemoTrustActivated, contact.hasExplicitOmemoTrustActivated);
+}
+
+-(BOOL) isEqualToMessage:(MLMessage*) message
+{
+    return message != nil &&
+           [self.contactJid isEqualToString:message.buddyName] &&
+           self.accountID.intValue == message.accountID.intValue;
+}
+
+-(BOOL) isEqualToContact:(id<MLContactProtocol>) contact
+{
+    if(contact == nil)
+        return NO;
+    else if([contact isKindOfClass:[MLContact class]])
+        return [self.contactJid isEqualToString:((MLContact*)contact).contactJid] &&
+            self.accountID.intValue == ((MLContact*)contact).accountID.intValue;
+    else if([contact isKindOfClass:[MLChannelContact class]])
+        return [self.contactJid isEqualToString:((MLChannelContact*)contact).mucContact.contactJid] &&
+            self.accountID.intValue == ((MLChannelContact*)contact).mucContact.accountID.intValue;
+    else
+        MLAssert(NO, @"Can not check equality for unknown MLContactProtocol object", (@{@"self": self, @"contact": contact}));
+}
+
+-(BOOL) isEqual:(id _Nullable) object
+{
+    if(self == object)
+        return YES;
+    else if([object conformsToProtocol:@protocol(MLContactProtocol)])
+        return [self isEqualToContact:(MLContact*)object];
+    else if([object isKindOfClass:[MLMessage class]])
+        return [self isEqualToMessage:(MLMessage*)object];
+    else
+        return NO;
+}
+
+-(NSUInteger) hash
+{
+    return [self.contactJid hash] ^ [self.accountID hash];
+}
+
+-(NSString*) id
+{
+    return [NSString stringWithFormat:@"%@|%@", self.accountID, self.contactJid];
+}
+
+-(NSString*) description
+{
+    return [NSString stringWithFormat:@"%@: %@ (%@) %@%@%@, kSub=%@ (listed locally:%@)", self.accountID, self.contactJid, self.isMuc ? self.mucType : @"1:1", self.isInRoster ? @"inRoster" : @"not(inRoster)", self.hasIncomingContactRequest ? @"[incomingContactRequest]" : @"", self.hasOutgoingContactRequest ? @"[outgoingContactRequest]" : @"", self.subscription, bool2str(self.isListedLocally)];
+}
+
++(MLContact*) contactFromDictionary:(NSDictionary*) dic
+{
+    MLContact* contact = [MLContact new];
+    contact.contactJid = [dic objectForKey:@"buddy_name"];
+    contact.nickName = nilDefault([dic objectForKey:@"nick_name"], @"");
+    contact.fullName = nilDefault([dic objectForKey:@"full_name"], @"");
+    contact.subscription = nilDefault([dic objectForKey:@"subscription"], kSubNone);
+    contact.ask = nilDefault([dic objectForKey:@"ask"], @"");
+    contact.accountID = [dic objectForKey:@"account_id"];
+    contact.groupSubject = nilDefault([dic objectForKey:@"muc_subject"], @"");
+    contact.accountNickInGroup = nilDefault([dic objectForKey:@"muc_nick"], @"");
+    contact.mucType = [dic objectForKey:@"muc_type"];
+    contact.isMuc = [[dic objectForKey:@"Muc"] boolValue];
+    if(contact.isMuc  && !contact.mucType)
+        contact.mucType = kMucTypeChannel;       //default value
+    contact.mucType = nilDefault(contact.mucType, @"");
+    contact.isMentionOnly = [[dic objectForKey:@"mentionOnly"] boolValue];
+    contact.isPinned = [[dic objectForKey:@"pinned"] boolValue];
+    contact.statusMessage = nilDefault([dic objectForKey:@"status"], @"");
+    contact.state = nilDefault([dic objectForKey:@"state"], @"online");
+    contact->_unreadCount = -1;
+    contact.isActiveChat = [[dic objectForKey:@"isActiveChat"] boolValue];
+    contact.isEncrypted = [[dic objectForKey:@"encrypt"] boolValue];
+    contact.isMuted = [[dic objectForKey:@"muted"] boolValue];
+    // initial value comes from db, all other values get updated by our kMonalLastInteractionUpdatedNotice handler
+    contact.lastInteractionTime = nilExtractor([dic objectForKey:@"lastInteraction"]);        //no default needed, already done in DataLayer
+    contact.rosterGroups = [dic objectForKey:@"rosterGroups"];
+    contact.hasReachedMamArchiveTop = [[dic objectForKey:@"reached_mam_archive_top"] boolValue];
+    contact.hasExplicitOmemoTrustActivated = [[dic objectForKey:@"explicit_omemo_trust_activated"] boolValue];
+    contact->_avatar = nil;
+
+    MLAssert(contact.rosterGroups != nil, @"rosterGroups must be non-nil (if a user is in no groups, it should be empty set)");
+
+    return contact;
+}
+
+@end
