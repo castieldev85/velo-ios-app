@@ -7,6 +7,7 @@
 //
 
 import AVKit
+import SwiftUI
 import FrameUp
 import ExyteChat
 typealias ExyteChatView = ExyteChat.ChatView
