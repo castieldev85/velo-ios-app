@@ -151,6 +151,39 @@ public final class VeloPQEngine {
         return store.hasSession(name: jid.lowercased(), deviceId: deviceId)
     }
 
+    // MARK: - Impronta ibrida (come CryptoHelper.hybridOmemo2Fingerprint della Velo Android)
+
+    /// SHA3-512("velo:omemo2:ik:v2" || len32(ik) || ik || len32(pq_ik) || pq_ik), in esadecimale.
+    /// `ik` è la chiave classica a 33 byte (con lo 0x05 davanti), `pqIk` la chiave ML-DSA-87.
+    public static func hybridFingerprint(ik: Data, pqIk: Data) -> String {
+        var input = Array("velo:omemo2:ik:v2".utf8)
+        func lengthPrefixed(_ d: Data) {
+            let n = UInt32(d.count)
+            input += [UInt8((n >> 24) & 0xFF), UInt8((n >> 16) & 0xFF), UInt8((n >> 8) & 0xFF), UInt8(n & 0xFF)]
+            input += Array(d)
+        }
+        lengthPrefixed(ik)
+        lengthPrefixed(pqIk)
+        return Kmac.sha3_512(input).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// La nostra impronta ibrida (quella che l'Android mostra come "PQ OMEMO2 fingerprint").
+    public var ownHybridFingerprint: String? {
+        guard let pq = try? VeloPQFFI.pqIdentityPublicKey(keyPair: store.pqIdentityKeyPair) else { return nil }
+        return VeloPQEngine.hybridFingerprint(ik: Data(store.identityKeyPairValue.identityKey.serialize()), pqIk: pq)
+    }
+
+    /// L'impronta ibrida di un dispositivo del contatto: chiave classica vista nella sessione + chiave PQ fissata.
+    public func hybridFingerprint(jid rawJid: String, deviceId: UInt32) -> String? {
+        let jid = rawJid.lowercased()
+        guard let address = try? ProtocolAddress(name: jid, deviceId: deviceId),
+              let identity = try? store.identity(for: address, context: ctx) else { return nil }
+        let ik = Data(identity.serialize())
+        let ikFingerprint = ik.map { String(format: "%02x", $0) }.joined()
+        guard let pq = store.pinnedPqIdentity(jid: jid, ikFingerprint: ikFingerprint) else { return nil }
+        return VeloPQEngine.hybridFingerprint(ik: ik, pqIk: pq)
+    }
+
     public func buildSession(jid rawJid: String, deviceId: UInt32, bundleXML: String) throws {
         let jid = rawJid.lowercased()
         let b = try ParsedBundle(xml: bundleXML)

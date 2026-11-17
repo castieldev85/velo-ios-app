@@ -432,6 +432,12 @@ struct ContactDetails: View {
 #if !DISABLE_OMEMO
                 if !HelperTools.isContactBlacklistedForEncryption(contact.obj) && !contact.isSelf {
                     if !contact.isMuc || contact.mucType == kMucTypeGroup {
+                        //VELO: il codice di sicurezza, come "Verifica contatto" della Velo Android
+                        if !contact.isMuc {
+                            NavigationLink(destination: LazyClosureView(VeloVerifyView(contact: contact.obj))) {
+                                Text("Verifica contatto")
+                            }
+                        }
                         NavigationLink(destination: LazyClosureView(OmemoKeysView(omemoKeys: OmemoKeysForChat(viewContact: contact)))) {
                             Text("Encryption Keys")
                         }

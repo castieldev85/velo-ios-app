@@ -1825,6 +1825,28 @@ $$
     }];
 }
 
+-(NSString* _Nullable) veloOwnHybridFingerprint
+{
+    return self.veloPQ.ownHybridFingerprint;
+}
+
+//un elemento per ogni telefono del contatto con cui c'e' una sessione PQ e una chiave PQ fissata
+-(NSArray<NSDictionary*>*) veloPeerHybridFingerprintsFor:(NSString*) jid
+{
+    NSMutableArray* result = [NSMutableArray new];
+    if(self.veloPQ == nil || jid == nil)
+        return result;
+    for(NSNumber* rid in [self.veloPQ deviceListForJid:jid] ?: @[])
+    {
+        if(![self.veloPQ hasSessionWithJid:jid deviceId:rid.unsignedIntValue])
+            continue;
+        NSString* hybrid = [self.veloPQ hybridFingerprintWithJid:jid deviceId:rid.unsignedIntValue];
+        if(hybrid != nil)
+            [result addObject:@{@"device": rid, @"fingerprint": hybrid}];
+    }
+    return result;
+}
+
 -(BOOL) veloPQHasDevicesFor:(NSString*) jid
 {
     if(self.veloPQ == nil)

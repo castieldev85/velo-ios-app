@@ -40,6 +40,9 @@ NS_ASSUME_NONNULL_BEGIN
 -(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message toContact:(NSString*) toContact;
 -(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message extraXML:(NSArray<NSString*>* _Nullable) extraXML toContact:(NSString*) toContact;
 -(BOOL) veloPQHasDevicesFor:(NSString*) jid;
+//VELO: pagina Verifica (codice di sicurezza come la Velo Android)
+-(NSString* _Nullable) veloOwnHybridFingerprint NS_SWIFT_NAME(veloOwnHybridFingerprint());
+-(NSArray<NSDictionary*>*) veloPeerHybridFingerprintsFor:(NSString*) jid NS_SWIFT_NAME(veloPeerHybridFingerprints(for:));
 -(NSDictionary* _Nullable) veloPQDecryptMessage:(XMPPMessage*) messageNode;
 -(void) veloPQFetchDevicelistOf:(NSString*) jid;
 

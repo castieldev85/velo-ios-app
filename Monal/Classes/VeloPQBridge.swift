@@ -2,6 +2,7 @@
 // Usato da MLOMEMO.m (sezione "VELO PQ") e da MLMessageProcessor.m / xmpp.m.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import CryptoKit
 import Foundation
 import VeloPQ
 
@@ -152,6 +153,45 @@ import VeloPQ
             DDLogError("VELO PQ: decifratura da \(senderJid) fallita: \(error)")
             return ["error": "\(error)"]
         }
+    }
+
+    // MARK: Verifica del contatto (come VeloVerifyActivity / VeloSafetyCode della Velo Android)
+
+    @objc public var ownHybridFingerprint: String? { engine.ownHybridFingerprint }
+
+    @objc public func hybridFingerprint(jid: String, deviceId: UInt32) -> String? {
+        return engine.hybridFingerprint(jid: jid, deviceId: deviceId)
+    }
+
+    /// Il codice che due persone si leggono: copre i due account e le due chiavi ibride, uguale sui due telefoni.
+    @objc public static func safetyCode(ownJid: String, ownKey: String, peerJid: String, peerKey: String) -> String {
+        let nl = "\n"
+        let one = ownJid.lowercased() + nl + ownKey.lowercased()
+        let two = peerJid.lowercased() + nl + peerKey.lowercased()
+        let joined = one <= two ? one + nl + two : two + nl + one
+        let digest = Array(SHA256.hash(data: Data(joined.utf8)))
+        var code = ""
+        for group in 0..<8 {
+            var value = 0
+            for i in 0..<3 { value = (value << 8) | Int(digest[group * 3 + i]) }
+            if group > 0 { code += group == 4 ? nl : " " }
+            code += String(format: "%05d", value % 100000)
+        }
+        return code
+    }
+
+    private static let verifiedKey = "veloPQVerified"
+
+    @objc public static func isVerified(account: NSNumber, jid: String, hybrid: String) -> Bool {
+        let all = HelperTools.defaultsDB().stringArray(forKey: verifiedKey) ?? []
+        return all.contains("\(account.stringValue)|\(jid.lowercased())|\(hybrid.lowercased())")
+    }
+
+    @objc public static func markVerified(account: NSNumber, jid: String, hybrid: String) {
+        var all = HelperTools.defaultsDB().stringArray(forKey: verifiedKey) ?? []
+        let entry = "\(account.stringValue)|\(jid.lowercased())|\(hybrid.lowercased())"
+        if !all.contains(entry) { all.append(entry) }
+        HelperTools.defaultsDB().set(all, forKey: verifiedKey)
     }
 
     @objc public var needsRepublish: Bool {
