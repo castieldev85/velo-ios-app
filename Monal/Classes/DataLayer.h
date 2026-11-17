@@ -227,6 +227,10 @@ extern NSString* const kMessageTypeFiletransfer;
 -(NSNumber*) autoDeleteMessagesAfterInterval:(NSTimeInterval)interval;
 -(void) retractMessageHistory:(NSNumber *) messageNo;
 -(void) deleteMessageHistoryLocally:(NSNumber*) messageNo;
+//VELO: messaggio a tempo scaduto (cancellato qui, con il file); restituisce lo history id o nil se non c'e'
+-(NSNumber* _Nullable) veloExpireMessageId:(NSString*) messageId withBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID NS_SWIFT_NAME(veloExpireMessage(id:buddy:accountID:));
+//VELO: "cancella la cronologia per entrambi" (urn:velo:history-purge:0): tutto fino a before
+-(void) veloClearMessagesWithBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID before:(NSDate*) before;
 -(void) updateMessageHistory:(NSNumber*) messageNo withText:(NSString*) newText;
 -(NSNumber* _Nullable) getLMCHistoryIDForMessageId:(NSString*) messageid from:(NSString*) from occupantId:(NSString* _Nullable) occupantId participantJid:(NSString* _Nullable) participantJid andAccount:(NSNumber*) accountID;
 -(NSNumber* _Nullable) getRetractionHistoryIDForMessageId:(NSString*) messageid from:(NSString*) from participantJid:(NSString* _Nullable) participantJid occupantId:(NSString* _Nullable) occupantId andAccount:(NSNumber*) accountID;

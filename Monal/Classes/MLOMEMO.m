@@ -1801,7 +1801,21 @@ $$
     }];
 }
 
+-(BOOL) veloPQHasDevicesFor:(NSString*) jid
+{
+    if(self.veloPQ == nil)
+        return NO;
+    NSArray<NSNumber*>* devices = [self.veloPQ deviceListForJid:jid];
+    return devices != nil && devices.count > 0;
+}
+
 -(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message toContact:(NSString*) toContact
+{
+    return [self veloPQEncryptMessage:messageNode withMessage:message extraXML:nil toContact:toContact];
+}
+
+//VELO: extraXML = elementi gia' serializzati da mettere dentro la busta SCE (retract, ephemeral, purge...)
+-(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message extraXML:(NSArray<NSString*>* _Nullable) extraXML toContact:(NSString*) toContact
 {
     if(self.veloPQ == nil)
         return 0;
@@ -1815,7 +1829,7 @@ $$
     }
     if(devices.count == 0)
         return 0;
-    MLXMLNode* encrypted = [self.veloPQ encryptedNodeWithBody:message toJid:toContact ownJid:self.account.connectionProperties.identity.jid];
+    MLXMLNode* encrypted = [self.veloPQ encryptedNodeWithBody:message extraXML:(extraXML ?: @[]) toJid:toContact ownJid:self.account.connectionProperties.identity.jid];
     if(encrypted == nil)
     {
         for(NSNumber* rid in devices)

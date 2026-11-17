@@ -31,7 +31,7 @@
 {
     self = [self init];
     [self addChildNode:[[MLXMLNode alloc] initWithElement:@"c" andNamespace:@"http://jabber.org/protocol/caps" withAttributes:@{
-        @"node": @"https://monal-im.org/",
+        @"node": @"urn:velo:client",      //VELO: la Velo Android riconosce le altre Velo da questo nodo
         @"hash": @"sha-1",
         @"ver": version
     } andChildren:@[] andData:nil]];

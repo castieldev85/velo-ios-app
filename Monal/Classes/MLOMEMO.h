@@ -38,6 +38,8 @@ NS_ASSUME_NONNULL_BEGIN
 //VELO PQ: OMEMO2 post-quantistico compatibile con la Velo Android (urn:velo:omemo-pq:1)
 //0 = il contatto non usa la Velo PQ (si usa l'OMEMO di Monal), 1 = cifrato PQ, 2 = bloccato (chiavi PQ non ancora pronte: NON inviare)
 -(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message toContact:(NSString*) toContact;
+-(int) veloPQEncryptMessage:(XMPPMessage*) messageNode withMessage:(NSString* _Nullable) message extraXML:(NSArray<NSString*>* _Nullable) extraXML toContact:(NSString*) toContact;
+-(BOOL) veloPQHasDevicesFor:(NSString*) jid;
 -(NSDictionary* _Nullable) veloPQDecryptMessage:(XMPPMessage*) messageNode;
 -(void) veloPQFetchDevicelistOf:(NSString*) jid;
 

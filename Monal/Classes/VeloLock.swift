@@ -163,6 +163,28 @@ enum VeloAutoWipe {
 // MARK: - Cancellazione totale (antipanico / autodistruzione)
 
 enum VeloWipe {
+    /// PIN antipanico: come la Velo Android chiede ai contatti Velo di cancellare le chat
+    /// ("cancella per entrambi"), poi cancella tutto qui. Aspetta la connessione al massimo 12 s.
+    static func panicAndExit() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let manager = MLXMPPManager.sharedInstance()
+            func accounts() -> [xmpp] { manager.connectedXMPP.compactMap { $0 as? xmpp } }
+            let deadline = Date().addingTimeInterval(12)
+            while Date() < deadline && accounts().contains(where: { !$0.veloIsBound() }) {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            var sent = 0
+            let contacts = DataLayer.sharedInstance().contactList()
+            for account in accounts() where account.veloIsBound() {
+                for contact in contacts where contact.accountID == account.accountID && !contact.isMuc && !contact.isSelf {
+                    if account.veloSendHistoryPurge(to: contact) { sent += 1 }
+                }
+            }
+            if sent > 0 { Thread.sleep(forTimeInterval: 3) }
+            DispatchQueue.main.async { everythingAndExit() }
+        }
+    }
+
     /// Come clearApplicationUserData() della Velo Android: chiavi, account, chat, file, impostazioni. Poi chiude.
     static func everythingAndExit() -> Never {
         for cls in [kSecClassGenericPassword, kSecClassInternetPassword, kSecClassKey, kSecClassCertificate, kSecClassIdentity] {
@@ -195,6 +217,7 @@ struct VeloLockView: View {
     @State private var pin = ""
     @State private var message = "Inserisci il PIN"
     @State private var isError = false
+    @State private var wiping = false
 
     private let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"]
 
@@ -228,7 +251,7 @@ struct VeloLockView: View {
                         .frame(width: 220, height: 50)
                         .background(Capsule().fill(Color(red: 0x7C / 255.0, green: 0x8C / 255.0, blue: 1)))
                 }
-                .disabled(pin.isEmpty)
+                .disabled(pin.isEmpty || wiping)
                 Spacer()
             }
         }
@@ -246,7 +269,8 @@ struct VeloLockView: View {
         case .unlocked:
             onUnlock()
         case .panic:
-            VeloWipe.everythingAndExit()
+            wiping = true
+            VeloWipe.panicAndExit()
         case .wrong:
             isError = true
             message = "PIN sbagliato"

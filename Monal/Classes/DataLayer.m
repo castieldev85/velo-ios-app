@@ -20,6 +20,7 @@
 #import <monalxmpp/MLContactSoftwareVersionInfo.h>
 #import <monalxmpp/MLXMPPManager.h>
 #import <monalxmpp/MLReactionsEntry.h>
+#import <monalxmpp/MLNotificationQueue.h>
 
 #ifdef SNIKKET_MIGRATION
 #import <monalxmpp/monalxmpp-Swift.h>
@@ -1831,6 +1832,42 @@ static NSDateFormatter* dbFormatter;
         if([msg.messageType isEqualToString:kMessageTypeFiletransfer])
             [MLFiletransfer deleteFileForMessage:msg];
         [self.db executeNonQuery:@"DELETE FROM message_history WHERE message_history_id=?;" andArguments:@[messageNo]];
+        [self.db executeNonQuery:@"PRAGMA secure_delete=off;"];
+    }];
+}
+
+-(NSNumber* _Nullable) veloExpireMessageId:(NSString*) messageId withBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID
+{
+    NSNumber* historyId = [self.db idReadTransaction:^{
+        return [self.db executeScalar:@"SELECT message_history_id FROM message_history WHERE account_id=? AND buddy_name=? AND messageid=? ORDER BY message_history_id DESC LIMIT 1;" andArguments:@[accountID, buddy, messageId]];
+    }];
+    if(historyId == nil || ![historyId isKindOfClass:[NSNumber class]])
+        return nil;
+    MLMessage* msg = [MLMessage createMessageFromHistoryID:historyId];
+    MLContact* contact = msg.chatContact;
+    [self deleteMessageHistoryLocally:historyId];
+    if(contact != nil)
+    {
+        [[MLNotificationQueue currentQueue] postNotificationName:kMonalDeletedMessageNotice object:contact.account userInfo:@{
+            @"historyId": historyId,
+            @"contact": contact,
+        }];
+        [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactRefresh object:contact.account userInfo:@{
+            @"contact": contact,
+        }];
+    }
+    return historyId;
+}
+
+-(void) veloClearMessagesWithBuddy:(NSString*) buddy onAccount:(NSNumber*) accountID before:(NSDate*) before
+{
+    NSString* beforeString = [dbFormatter stringFromDate:before];
+    [self.db voidWriteTransaction:^{
+        [self.db executeNonQuery:@"PRAGMA secure_delete=on;"];
+        NSArray* messageHistoryIDs = [self.db executeScalarReader:@"SELECT message_history_id FROM message_history WHERE messageType=? AND account_id=? AND buddy_name=? AND timestamp<=?;" andArguments:@[kMessageTypeFiletransfer, accountID, buddy, beforeString]];
+        for(NSNumber* historyId in messageHistoryIDs)
+            [MLFiletransfer deleteFileForMessage:[MLMessage createMessageFromHistoryID:historyId]];
+        [self.db executeNonQuery:@"DELETE FROM message_history WHERE account_id=? AND buddy_name=? AND timestamp<=?;" andArguments:@[accountID, buddy, beforeString]];
         [self.db executeNonQuery:@"PRAGMA secure_delete=off;"];
     }];
 }

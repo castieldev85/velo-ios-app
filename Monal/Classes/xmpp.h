@@ -134,6 +134,10 @@ typedef void (^monal_iq_handler_t)(XMPPIQ* _Nullable);
  send a message to a contact with xmpp id
  */
 -(void) retractMessage:(MLMessage*) msg;
+//VELO: "cancella la cronologia per entrambi" verso un contatto Velo PQ; NO se il contatto non usa la Velo PQ
+-(BOOL) veloSendHistoryPurgeTo:(MLContact*) contact;
+//VELO: lo stream e' pronto a spedire (per l'antipanico)
+-(BOOL) veloIsBound;
 -(void) moderateMessage:(MLMessage*) msg withReason:(NSString*) reason;
 -(void) sendMessage:(NSString*) message toContact:(MLContact*) contact isEncrypted:(BOOL) encrypt isUpload:(BOOL) isUpload andMessageId:(NSString*) messageId;
 -(void) sendMessage:(NSString*) message toContact:(MLContact*) contact isEncrypted:(BOOL) encrypt isUpload:(BOOL) isUpload andMessageId:(NSString*) messageId withLMCId:(NSString* _Nullable) LMCId;

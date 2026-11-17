@@ -4012,6 +4012,41 @@ static NSRegularExpression* fastTokenRemovalRegex;
 -(void) retractMessage:(MLMessage*) msg
 {
     MLAssert([msg.accountID isEqual:self.accountID], @"Can not retract message from one account on another account!", (@{@"self.accountID": self.accountID, @"msg": msg}));
+#ifndef DISABLE_OMEMO
+    //VELO: verso la Velo PQ il richiamo viaggia DENTRO la busta cifrata (quello in chiaro la Velo Android lo ignora)
+    if(!msg.isMuc && [self.omemo veloPQHasDevicesFor:msg.buddyName])
+    {
+        XMPPMessage* pqNode = [[XMPPMessage alloc] initWithType:kMessageChatType to:msg.buddyName];
+        NSString* safeId = [[[[msg.messageId stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"]
+                              stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"]
+                             stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"]
+                            stringByReplacingOccurrencesOfString:@"\"" withString:@"&quot;"];
+        NSArray* extra = @[
+            [NSString stringWithFormat:@"<retract xmlns=\"urn:xmpp:message-retract:1\" id=\"%@\"/>", safeId],
+            @"<fallback xmlns=\"urn:xmpp:fallback:0\" for=\"urn:xmpp:message-retract:1\"/>",
+        ];
+        int r = [self.omemo veloPQEncryptMessage:pqNode withMessage:@"This message has been retracted by the sender." extraXML:extra toContact:msg.buddyName];
+        if(r == 2)
+        {
+            DDLogWarn(@"VELO PQ: retraction of %@ NOT sent (PQ keys not ready)", msg.messageId);
+            return;
+        }
+        if(r == 1)
+        {
+            [self addEME:@"urn:velo:omemo-pq:1" withName:@"PQ-OMEMO2" toMessageNode:pqNode];
+            [pqNode setStoreHint];
+            [self dispatchAsyncOnReceiveQueue: ^{
+                [self send:pqNode];
+                [[DataLayer sharedInstance] retractMessageHistory:msg.messageDBId];
+                [[MLNotificationQueue currentQueue] postNotificationName:kMonalDeletedMessageNotice object:self userInfo:@{
+                    @"historyId": msg.messageDBId,
+                    @"contact": msg.chatContact
+                }];
+            }];
+            return;
+        }
+    }
+#endif
     XMPPMessage* messageNode = [[XMPPMessage alloc] initWithType:msg.isMuc ? kMessageGroupChatType : kMessageChatType to:msg.buddyName];
     
     DDLogVerbose(@"Retracting message: %@", msg);
@@ -4037,6 +4072,34 @@ static NSRegularExpression* fastTokenRemovalRegex;
             @"contact": msg.chatContact
         }];
     }];
+}
+
+-(BOOL) veloSendHistoryPurgeTo:(MLContact*) contact
+{
+#ifndef DISABLE_OMEMO
+    if(contact.isMuc || contact.isSelf || ![self.omemo veloPQHasDevicesFor:contact.contactJid])
+        return NO;
+    long long before = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    XMPPMessage* purgeNode = [[XMPPMessage alloc] initWithType:kMessageChatType to:contact.contactJid];
+    NSArray* extra = @[[NSString stringWithFormat:@"<purge xmlns=\"urn:velo:history-purge:0\" before=\"%lld\"/>", before]];
+    //stesso testo di riserva della Velo Android (HistoryPurge.FALLBACK_BODY)
+    if([self.omemo veloPQEncryptMessage:purgeNode withMessage:@"Ho cancellato la cronologia di questa chat." extraXML:extra toContact:contact.contactJid] != 1)
+        return NO;
+    [self addEME:@"urn:velo:omemo-pq:1" withName:@"PQ-OMEMO2" toMessageNode:purgeNode];
+    [purgeNode setStoreHint];
+    DDLogInfo(@"VELO PQ: sending history purge (before %lld) to %@", before, contact.contactJid);
+    [self dispatchAsyncOnReceiveQueue: ^{
+        [self send:purgeNode];
+    }];
+    return YES;
+#else
+    return NO;
+#endif
+}
+
+-(BOOL) veloIsBound
+{
+    return self.accountState >= kStateBound;
 }
 
 -(void) moderateMessage:(MLMessage*) msg withReason:(NSString*) reason
@@ -4093,15 +4156,26 @@ static NSRegularExpression* fastTokenRemovalRegex;
 #ifndef DISABLE_OMEMO
     //VELO PQ: verso chi usa la Velo PQ si cifra SOLO in OMEMO2 post-quantistico, mai si scende all'OMEMO vecchio
     int veloPQResult = 0;
+    //VELO: orologio della chat (come la Velo Android): il timer viaggia dentro la busta PQ
+    NSInteger veloTimer = (contact.isMuc || LMCId != nil) ? 0 : [VeloMessageRules sendTimerForAccount:self.accountID jid:contact.contactJid];
+    NSArray* veloExtra = veloTimer > 0 ? @[[NSString stringWithFormat:@"<ephemeral xmlns=\"urn:xmpp:ephemeral:0\" timer=\"%ld\"/>", (long)veloTimer]] : @[];
     if(encrypt && !contact.isMuc)
-        veloPQResult = [self.omemo veloPQEncryptMessage:messageNode withMessage:message toContact:contact.contactJid];
+        veloPQResult = [self.omemo veloPQEncryptMessage:messageNode withMessage:message extraXML:veloExtra toContact:contact.contactJid];
     if(veloPQResult == 2)
     {
         DDLogWarn(@"VELO PQ: message %@ to %@ NOT sent (PQ keys not ready)", messageId, contact.contactJid);
         return;
     }
     if(veloPQResult == 1)
+    {
         [self addEME:@"urn:velo:omemo-pq:1" withName:@"PQ-OMEMO2" toMessageNode:messageNode];
+        if(veloTimer > 0)
+        {
+            //anche la nostra copia sparisce allo scadere
+            [VeloMessageRules registerExpiryForAccount:self.accountID buddy:contact.contactJid messageId:messageNode.id at:[NSDate dateWithTimeIntervalSinceNow:veloTimer]];
+            [messageNode addChildNode:[[MLXMLNode alloc] initWithElement:@"no-permanent-store" andNamespace:@"urn:xmpp:hints"]];
+        }
+    }
     else if(encrypt && (!contact.isMuc || (contact.isMuc && [contact.mucType isEqualToString:kMucTypeGroup])))
     {
         [self.omemo encryptMessage:messageNode withMessage:message toContact:contact.contactJid];

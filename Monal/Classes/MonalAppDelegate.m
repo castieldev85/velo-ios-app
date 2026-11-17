@@ -65,6 +65,7 @@ static void veloStartTor(void)
 #import <monalxmpp/MLUDPLogger.h>
 #import "MLCrashReporter.h"
 #import <Monal-Swift.h>
+#import <monalxmpp/monalxmpp-Swift.h>
 
 @import NotificationBannerSwift;
 @import UserNotifications;
@@ -195,6 +196,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     
     //VELO: Tor parte per primo, prima di qualsiasi collegamento
     veloStartTor();
+    //VELO: cancella i messaggi a tempo scaduti
+    [VeloMessageRules startSweeper];
     
     //init IPC and ProcessLock
     [IPC initializeForProcess:@"MainApp"];

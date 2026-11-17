@@ -646,11 +646,29 @@ struct ContactDetails: View {
                     ActionSheet(
                         title: Text("Clear History"),
                         message: Text("Do you really want to clear all messages exchanged in this conversation? If using OMEMO you won't even be able to load them from your server again."),
-                        buttons: [
+                        //VELO: nelle chat singole si puo' cancellare anche sul telefono del contatto (come la Velo Android)
+                        buttons: contact.isMuc ? [
                             .cancel(),
                             .destructive(
                                 Text("Yes"),
                                 action: {
+                                    contact.obj.clearHistory()
+                                }
+                            )
+                        ] : [
+                            .cancel(Text("Annulla")),
+                            .destructive(
+                                Text("Solo su questo telefono"),
+                                action: {
+                                    contact.obj.clearHistory()
+                                }
+                            ),
+                            .destructive(
+                                Text("Anche sul telefono del contatto"),
+                                action: {
+                                    if !account.veloSendHistoryPurge(to: contact.obj) {
+                                        DDLogWarn("VELO: history purge not sent (contact without Velo PQ)")
+                                    }
                                     contact.obj.clearHistory()
                                 }
                             )

@@ -6,6 +6,7 @@
 //  Copyright © 2024 monal-im.org. All rights reserved.
 //
 
+import AVKit
 import FrameUp
 import ExyteChat
 typealias ExyteChatView = ExyteChat.ChatView
@@ -125,6 +126,9 @@ struct ChatView: View {
     @State private var inputText = ""
     @State private var isTyping = false
     @State private var typingTimer: Timer?
+    //VELO: orologio dei messaggi di questa chat e foto/video a visualizzazione singola
+    @State private var veloTimer = 0
+    @State private var veloViewOnce: VeloViewOnceItem?
 
     init(contact: ObservableKVOWrapper<MLContact>) {
         _contact = StateObject(wrappedValue:contact)
@@ -133,22 +137,24 @@ struct ChatView: View {
     }
 
     enum MessageAction: MessageMenuAction {
-        case copy, edit, retract, moderate, delete, resend
+        case copy, edit, retract, moderate, delete, resend, openOnce
 
         func title() -> String {
             switch self {
                 case .copy:
-                    "Copy"
+                    "Copia"
                 case .edit:
-                    "Edit"
+                    "Modifica"
                 case .retract:
-                    "Retract"
+                    "Elimina per tutti"
                 case .moderate:
-                    "Moderate"
+                    "Modera"
                 case .delete:
-                    "Delete Locally"
+                    "Elimina per me"
                 case .resend:
-                    "Resend"
+                    "Invia di nuovo"
+                case .openOnce:
+                    "Apri (una volta)"
             }
         }
 
@@ -168,6 +174,8 @@ struct ChatView: View {
                     Image(systemName: "trash")
                 case .resend:
                     Image(systemName: "paperplane")
+                case .openOnce:
+                    Image(systemName: "eye")
             }
         }
 
@@ -177,6 +185,9 @@ struct ChatView: View {
             let account = contact.account!
             if mlMessage.retracted {
                 return [.delete]
+            }
+            if (message as! ChatViewMessage).veloViewOnceSeconds != nil {
+                return [.openOnce, .delete]
             }
             if case .error = message.status {
                 return [.resend, .delete]
@@ -462,6 +473,45 @@ struct ChatView: View {
         self.isUploadingFile = false
     }
 
+    //VELO: copia il file in una cartella temporanea, cancella subito messaggio e file, mostra la copia
+    //(cosi' non si riapre nemmeno se l'app si chiude mentre e' aperta). Come VeloViewOnce dell'Android.
+    private func veloOpenViewOnce(_ mlMessage: MLMessage, seconds: Int) {
+        let maybeInfo: MLFiletransferInfo? = mlMessage.fileInfo
+        guard mlMessage.messageType == kMessageTypeFiletransfer, let info = maybeInfo else {
+            return
+        }
+        guard info.downloadState == .complete, let source = info.fileURL else {
+            MLFiletransfer.downloadFile(forHistoryID: mlMessage.messageDBId)
+            alertPrompt = AlertPrompt(
+                title: Text("Scaricamento in corso"),
+                message: Text("La foto si sta scaricando: riprova tra qualche secondo."),
+                dismissLabel: Text("OK")
+            )
+            return
+        }
+        let isVideo = info.isVideo
+        let ext = isVideo ? ((info.mimeType ?? "").contains("quicktime") ? "mov" : "mp4") : "img"
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("velo-once-\(UUID().uuidString).\(ext)")
+        do {
+            try FileManager.default.copyItem(at: source, to: copy)
+        } catch {
+            DDLogError("VELO: view-once copy failed: \(error)")
+            return
+        }
+        VeloMessageRules.forgetViewOnce(account: mlMessage.accountID, buddy: mlMessage.buddyName, messageId: mlMessage.messageId)
+        let historyId = mlMessage.messageDBId
+        Task.detached(priority: .userInitiated) {
+            mlMessage.deleteLocally()
+        }
+        messages.removeAll(where: { $0.innerMessage.obj.messageDBId == historyId })
+        MLNotificationQueue.current().post(
+            name: Notification.Name(kMonalContactRefresh),
+            object: self.account,
+            userInfo: ["contact": self.contact.obj]
+        )
+        veloViewOnce = VeloViewOnceItem(url: copy, isVideo: isVideo, seconds: seconds)
+    }
+
     var body: some View {
         ExyteChatView(messages: messages, chatType: .conversation, replyMode: .quote) { draft in
             if !draft.medias.isEmpty || draft.recording != nil || !draft.files.isEmpty {
@@ -535,6 +585,8 @@ struct ChatView: View {
                     self.account.retractMessage(mlMessage)
                 case .moderate:
                     messageToModerate = mlMessage
+                case .openOnce:
+                    veloOpenViewOnce(mlMessage, seconds: (message as! ChatViewMessage).veloViewOnceSeconds ?? 0)
                 case .delete:
                     Task { @MainActor in
                         await Task.detached(priority: .userInitiated) {
@@ -686,6 +738,9 @@ struct ChatView: View {
                     .init()
             )
         )
+        .fullScreenCover(item: $veloViewOnce) { item in
+            VeloViewOnceViewer(item: item)
+        }
         .sheet(item: $selectedContactForContactDetails) { selectedContact in
             AnyView(AddTopLevelNavigation(withDelegate:nil, to:ContactDetails(delegate:nil, contact:selectedContact)))
         }
@@ -812,6 +867,27 @@ struct ChatView: View {
                 ProgressView()
                     .opacity(isLoadingMamHistory || isUploadingFile ? 1 : 0)
 
+                //VELO: orologio dei messaggi a tempo (vale per i messaggi nuovi di questa chat)
+                if !(contact.isMuc || contact.isSelf) {
+                    Menu {
+                        Text("I messaggi nuovi spariscono dopo:")
+                        ForEach(VeloMessageRules.timerChoices, id: \.self) { seconds in
+                            Button {
+                                veloTimer = seconds
+                                VeloMessageRules.setSendTimer(seconds, account: account.accountID, jid: contact.obj.contactJid)
+                            } label: {
+                                if veloTimer == seconds {
+                                    Label(VeloMessageRules.timerLabel(seconds), systemImage: "checkmark")
+                                } else {
+                                    Text(VeloMessageRules.timerLabel(seconds))
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: veloTimer > 0 ? "timer.circle.fill" : "timer")
+                    }
+                }
+
                 if ownRole == kMucRoleVisitor {
                     Button {
                         let _ = showPromisingLoadingOverlay(overlay, headline:"Requesting Voice") {
@@ -905,6 +981,7 @@ struct ChatView: View {
             loadChatBackground()
 
             checkOmemoSupport(withAlert:false)
+            veloTimer = VeloMessageRules.sendTimer(account: account.accountID, jid: contact.obj.contactJid)
             let messageDraft = DataLayer.sharedInstance().loadMessageDraft(self.contact.contactJid, forAccount:self.account.accountID)
             if let messageDraft, !messageDraft.isEmpty {
                 self.inputText = messageDraft
@@ -1012,6 +1089,16 @@ struct ChatView: View {
             }
             if contact.isEqual(self.contact.obj) {
                 self.messages = []
+                //VELO: dopo un "cancella per entrambi" restano i messaggi successivi
+                if notification.userInfo?["veloReload"] != nil {
+                    loadHistory()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name(VeloMessageRules.expiredNotification)).receive(on: RunLoop.main)) { notification in
+            if let historyId = notification.userInfo?["historyId"] as? NSNumber {
+                messages.removeAll(where: { $0.innerMessage.obj.messageDBId == historyId })
+                queuedNewMessages.removeAll(where: { $0.innerMessage.obj.messageDBId == historyId })
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name(kMonalBackgroundChanged)).receive(on: RunLoop.main)) { notification in
@@ -1041,13 +1128,18 @@ class ChatViewMessage: ExyteChat.Message {
     let innerMessage: ObservableKVOWrapper<MLMessage>
     let fileInfo: ObservableKVOWrapper<MLFiletransferInfo>?
     private var subscriptions: Set<AnyCancellable> = Set()
+    //VELO: nil se non e' a visualizzazione singola, altrimenti i secondi dopo l'apertura (0 = finche' non la chiudi)
+    let veloViewOnceSeconds: Int?
     override var text: String {
+        if veloViewOnceSeconds != nil {
+            return "👁 Visualizzazione singola · tieni premuto e scegli «Apri (una volta)»"
+        }
         if self.staticLocation != nil {
             return ""
         } else if innerMessage.messageType == kMessageTypeFiletransfer && fileInfo != nil {
             return ""
         }
-        return innerMessage.retracted ? NSLocalizedString("This message got retracted", comment: "") : innerMessage.messageText
+        return innerMessage.retracted ? "Messaggio eliminato" : innerMessage.messageText
     }
     override var hasText: Bool {
         return !text.isEmpty
@@ -1128,7 +1220,7 @@ class ChatViewMessage: ExyteChat.Message {
     }
     override var files: [File] {
         get {
-            guard innerMessage.messageType == kMessageTypeFiletransfer, let fileInfo = fileInfo else {
+            guard innerMessage.messageType == kMessageTypeFiletransfer, let fileInfo = fileInfo, veloViewOnceSeconds == nil else {
                 return []
             }
 
@@ -1156,6 +1248,7 @@ class ChatViewMessage: ExyteChat.Message {
     override var attachments: [Attachment] {
         get {
             guard innerMessage.messageType == kMessageTypeFiletransfer,
+                veloViewOnceSeconds == nil,
                 let fileInfo = fileInfo,
                 (fileInfo.downloadState as DownloadState.RawValue) == DownloadState.complete.rawValue,
                 fileInfo.isImage || fileInfo.isVideo else {
@@ -1178,6 +1271,7 @@ class ChatViewMessage: ExyteChat.Message {
     override var recording: Recording? {
         get {
             guard innerMessage.messageType == kMessageTypeFiletransfer,
+                veloViewOnceSeconds == nil,
                 let fileInfo = fileInfo,
                 (fileInfo.downloadState as DownloadState.RawValue) == DownloadState.complete.rawValue,
                 fileInfo.isAudio else {
@@ -1206,6 +1300,11 @@ class ChatViewMessage: ExyteChat.Message {
             self.fileInfo = ObservableKVOWrapper(innerMessage.obj.fileInfo)
         } else {
             self.fileInfo = nil
+        }
+        if message.inbound, let seconds = VeloMessageRules.viewOnceSeconds(account: message.accountID, buddy: message.buddyName, messageId: message.messageId) {
+            self.veloViewOnceSeconds = seconds.intValue
+        } else {
+            self.veloViewOnceSeconds = nil
         }
         let user = ChatViewUser(message.contact as! NSObject&MLContactProtocol)
         // We don't need to properly initialize the properties that we overrode with computed properties
@@ -1264,5 +1363,55 @@ class ChatViewUser: ExyteChat.User {
     }
     public var description: String {
         return "ChatViewUser<\(String(describing:self.innerContact))>"
+    }
+}
+
+//VELO: foto/video a visualizzazione singola: a tutto schermo, senza salva/condividi; la copia si cancella alla chiusura
+struct VeloViewOnceItem: Identifiable {
+    let id = UUID()
+    let url: URL
+    let isVideo: Bool
+    let seconds: Int
+}
+
+struct VeloViewOnceViewer: View {
+    let item: VeloViewOnceItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            Group {
+                if item.isVideo {
+                    VideoPlayer(player: player)
+                } else if let image = UIImage(contentsOfFile: item.url.path) {
+                    Image(uiImage: image).resizable().scaledToFit()
+                } else {
+                    Text("Impossibile aprire il file").foregroundColor(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+                    .padding()
+            }
+        }
+        .onAppear {
+            if item.isVideo {
+                player = AVPlayer(url: item.url)
+                player?.play()
+            }
+            if item.seconds > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(item.seconds)) { dismiss() }
+            }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            try? FileManager.default.removeItem(at: item.url)
+        }
     }
 }

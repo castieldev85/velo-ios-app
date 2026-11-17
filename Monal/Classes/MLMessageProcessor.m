@@ -7,6 +7,7 @@
 //
 
 #import "MLMessageProcessor.h"
+#import <monalxmpp/monalxmpp-Swift.h>
 #import <monalxmpp/DataLayer.h>
 #import "SignalAddress.h"
 #import <monalxmpp/HelperTools.h>
@@ -450,6 +451,74 @@ static NSMutableDictionary* _typingNotifications;
         else
         {
             NSDictionary* veloPQ = [account.omemo veloPQDecryptMessage:messageNode];
+            //VELO: comandi e regole dentro la busta cifrata, come li manda la Velo Android
+            NSDictionary* veloRetract = nil;
+            NSDictionary* veloPurge = nil;
+            NSDictionary* veloEphemeral = nil;
+            NSDictionary* veloViewOnce = nil;
+            for(NSDictionary* extra in (veloPQ[@"error"] == nil ? veloPQ[@"extras"] : nil))
+            {
+                NSString* name = extra[@"name"];
+                NSString* ns = extra[@"ns"];
+                if([name isEqualToString:@"retract"] && [ns isEqualToString:@"urn:xmpp:message-retract:1"])
+                    veloRetract = extra[@"attrs"];
+                else if([name isEqualToString:@"purge"] && [ns isEqualToString:@"urn:velo:history-purge:0"])
+                    veloPurge = extra[@"attrs"];
+                else if([name isEqualToString:@"ephemeral"] && [ns isEqualToString:@"urn:xmpp:ephemeral:0"])
+                    veloEphemeral = extra[@"attrs"];
+                else if([name isEqualToString:@"view-once"] && [ns isEqualToString:@"urn:velo:view-once:0"])
+                    veloViewOnce = extra[@"attrs"];
+            }
+            if(veloRetract != nil)
+            {
+                //"elimina per tutti": mai mostrato come messaggio
+                NSString* idToRetract = veloRetract[@"id"];
+                NSNumber* historyIdToRetract = idToRetract == nil ? nil : [[DataLayer sharedInstance] getRetractionHistoryIDForMessageId:idToRetract from:messageNode.fromUser participantJid:participantJid occupantId:occupantId andAccount:account.accountID];
+                if(historyIdToRetract != nil)
+                {
+                    [[DataLayer sharedInstance] retractMessageHistory:historyIdToRetract];
+                    [[MLNotificationQueue currentQueue] postNotificationName:kMonalDeletedMessageNotice object:account userInfo:@{
+                        @"historyId": historyIdToRetract,
+                        @"contact": possiblyUnknownContact,
+                    }];
+                }
+                else
+                    DDLogWarn(@"VELO PQ: could not find message '%@' to retract from %@", idToRetract, messageNode.fromUser);
+                return nil;
+            }
+            if(veloPurge != nil)
+            {
+                //"cancella la cronologia per entrambi": tutto fino all'ora indicata, mai mostrato
+                long long before = [veloPurge[@"before"] longLongValue];
+                if(before > 0)
+                {
+                    DDLogInfo(@"VELO PQ: history purge of chat with %@ up to %lld", buddyName, before);
+                    [[DataLayer sharedInstance] veloClearMessagesWithBuddy:buddyName onAccount:account.accountID before:[NSDate dateWithTimeIntervalSince1970:before / 1000.0]];
+                    [[MLNotificationQueue currentQueue] postNotificationName:kMonalContactHistoryCleared object:account userInfo:@{
+                        @"contact": possiblyUnknownContact,
+                        @"veloReload": @YES,
+                    }];
+                }
+                return nil;
+            }
+            if(veloPQ[@"body"] != nil)
+            {
+                NSInteger timer = [veloEphemeral[@"timer"] integerValue];
+                if(timer > 0)
+                {
+                    //scade all'ora d'invio + timer (come MessageParser della Velo Android)
+                    NSDate* sentAt = [messageNode findFirst:@"{urn:xmpp:delay}delay@stamp|datetime"];
+                    NSDate* expiry = [(sentAt ?: [NSDate date]) dateByAddingTimeInterval:timer];
+                    if([expiry timeIntervalSinceNow] <= 0)
+                    {
+                        DDLogInfo(@"VELO PQ: timed message %@ already expired, dropping", messageId);
+                        return nil;
+                    }
+                    [VeloMessageRules registerExpiryForAccount:account.accountID buddy:buddyName messageId:messageId at:expiry];
+                }
+                if(veloViewOnce != nil && !isMLhistory)
+                    [VeloMessageRules registerViewOnceForAccount:account.accountID buddy:buddyName messageId:messageId seconds:[veloViewOnce[@"seconds"] integerValue]];
+            }
             if(veloPQ[@"error"] != nil)
                 decrypted = [NSString stringWithFormat:@"Messaggio post-quantistico non decifrato: %@", veloPQ[@"error"]];
             else if(veloPQ[@"body"] != nil)
