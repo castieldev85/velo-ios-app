@@ -29,7 +29,7 @@ struct AccountPicker: View {
                         .frame(width: CGFloat(120), height: CGFloat(120), alignment: .center)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding()                    
-                    Text("You are trying to call '\(contacts.first!.contactDisplayName)' (\(contacts.first!.contactJid)), but this contact can be reached using different accounts. Please select the account you want to place the outgoing call with.")
+                    Text("You are trying to call '\(contacts.first!.contactDisplayName)' , but this contact can be reached using different accounts. Please select the account you want to place the outgoing call with.")
                         .padding()
                         .padding(.leading, -16.0)
                 }

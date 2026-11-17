@@ -5700,6 +5700,9 @@ static NSRegularExpression* fastTokenRemovalRegex;
 
 -(void) enablePush
 {
+    //VELO: niente push via i server di Monal (rivelerebbe il nostro server e l'account a terzi)
+    DDLogInfo(@"VELO: push disabled");
+    return;
 #if TARGET_OS_SIMULATOR
     DDLogError(@"Not registering push on the simulator!");
     [self disablePush];
@@ -5749,6 +5752,8 @@ static NSRegularExpression* fastTokenRemovalRegex;
 
 -(void) disablePush
 {
+    //VELO: mai contattare i server push di Monal
+    return;
     DDLogVerbose(@"Trying to disable push on account: %@", self.accountID);
     NSString* pushToken = [[HelperTools defaultsDB] objectForKey:@"pushToken"];
     NSString* pushServer = [[DataLayer sharedInstance] lastUsedPushServerForAccount:self.accountID];

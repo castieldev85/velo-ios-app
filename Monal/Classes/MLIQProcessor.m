@@ -209,7 +209,7 @@ $$class_handler(handleCatchup, $$ID(xmpp*, account), $$ID(XMPPIQ*, iqNode), $$BO
         }
         else
         {
-            [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to query for new messages on account %@", @""), account.connectionProperties.identity.jid] withNode:iqNode andAccount:account andIsSevere:YES];
+            [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to query for new messages on account %@", @""), [HelperTools veloShortJid:account.connectionProperties.identity.jid]] withNode:iqNode andAccount:account andIsSevere:YES];
             [account mamFinishedFor:account.connectionProperties.identity.jid];
         }
         return;
@@ -236,7 +236,7 @@ $$class_handler(handleMamResponseWithLatestId, $$ID(xmpp*, account), $$ID(XMPPIQ
     if([iqNode check:@"/<type=error>"])
     {
         DDLogWarn(@"Mam latest stanzaid query %@ returned error: %@", iqNode.id, [iqNode findFirst:@"error"]);
-        [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to query newest stanzaid for account %@", @""), account.connectionProperties.identity.jid] withNode:iqNode andAccount:account andIsSevere:YES];
+        [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to query newest stanzaid for account %@", @""), [HelperTools veloShortJid:account.connectionProperties.identity.jid]] withNode:iqNode andAccount:account andIsSevere:YES];
         return;
     }
     DDLogVerbose(@"Got latest stanza id to prime database with: %@", [iqNode findFirst:@"{urn:xmpp:mam:2}fin/{http://jabber.org/protocol/rsm}set/last#"]);
@@ -253,8 +253,8 @@ $$
 
 $$class_handler(handleMAMBackscrollingResultInvalidation, $$ID(xmpp*, account), $$ID(MLContact*, contact), $$PROMISE(promise))
     DDLogError(@"Got backscrolling mam error for %@", contact.contactJid);
-    NSString* errorMessage = [NSString stringWithFormat:NSLocalizedString(@"Could not fetch more old chat history for '%@' from the server archive. Please try again.", @""), contact.contactJid];
-    [promise reject:[HelperTools getNSErrorFrom:nil withDescription:errorMessage]];
+    //VELO: niente avviso (server senza archivio)
+    [promise fulfill:@[]];
 $$
 
 $$class_handler(handleMAMBackscrollingResult, $$ID(xmpp*, account), $$ID(XMPPIQ*, iqNode), $$ID(MLContact*, contact), $_ID(NSMutableOrderedSet*, historyIdsOfAlreadyRetreivedMessages), $$PROMISE(promise))
@@ -278,8 +278,9 @@ $$class_handler(handleMAMBackscrollingResult, $$ID(xmpp*, account), $$ID(XMPPIQ*
         (historyIdsOfAlreadyRetreivedMessages == nil || historyIdsOfAlreadyRetreivedMessages.count == 0) &&
         ![iqNode check:@"error/{urn:ietf:params:xml:ns:xmpp-stanzas}item-not-found"])
     {
-        NSString* errorMessage = [NSString stringWithFormat:NSLocalizedString(@"Could not fetch more old chat history for '%@' from the server archive", @""), contact.contactJid];
-        [promise reject:[HelperTools getNSErrorFrom:iqNode withDescription:errorMessage]];
+        //VELO: i server Velo non tengono l'archivio (MAM spento): niente errore, e' la cima della cronologia
+        DDLogInfo(@"VELO: no MAM archive on server, treating backscroll error as top of history");
+        [promise fulfill:@[]];
     }
     else
     {
@@ -377,7 +378,7 @@ $$class_handler(handleCarbonsEnabled, $$ID(xmpp*, account), $$ID(XMPPIQ*, iqNode
     if([iqNode check:@"/<type=error>"])
     {
         DDLogWarn(@"carbon enable iq returned error: %@", [iqNode findFirst:@"error"]);
-        [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to enable carbons for account %@", @""), account.connectionProperties.identity.jid] withNode:iqNode andAccount:account andIsSevere:YES];
+        [HelperTools postError:[NSString stringWithFormat:NSLocalizedString(@"Failed to enable carbons for account %@", @""), [HelperTools veloShortJid:account.connectionProperties.identity.jid]] withNode:iqNode andAccount:account andIsSevere:YES];
         return;
     }
     DDLogInfo(@"Carbons now enabled via legacy mechanism...");

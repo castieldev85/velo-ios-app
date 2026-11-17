@@ -118,8 +118,8 @@ typedef NS_ENUM(NSUInteger, MLNotificationState) {
         if(contact.isSubscribedTo)
         {
             UNMutableNotificationContent* content = [UNMutableNotificationContent new];
-            content.title = xmppAccount.connectionProperties.identity.jid;
-            content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) removed you from their contact list. You can send out a new contact request, if you think this was a mistake.", @""), contact.contactDisplayName, contact.contactJid];
+            content.title = [HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid];
+            content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) removed you from their contact list. You can send out a new contact request, if you think this was a mistake.", @""), contact.contactDisplayName, [HelperTools veloShortJid:contact.contactJid]];
             content.threadIdentifier = [self threadIdentifierWithContact:contact];
             content.categoryIdentifier = @"somethingRegardingAContact";
             content.userInfo = @{@"contact": [HelperTools serializeObject:contact]};
@@ -131,8 +131,8 @@ typedef NS_ENUM(NSUInteger, MLNotificationState) {
         else
         {
             UNMutableNotificationContent* content = [UNMutableNotificationContent new];
-            content.title = xmppAccount.connectionProperties.identity.jid;
-            content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) denied your contact request. You can try again, if you think this was a mistake.", @""), contact.contactDisplayName, contact.contactJid];
+            content.title = [HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid];
+            content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) denied your contact request. You can try again, if you think this was a mistake.", @""), contact.contactDisplayName, [HelperTools veloShortJid:contact.contactJid]];
             content.threadIdentifier = [self threadIdentifierWithContact:contact];
             content.categoryIdentifier = @"somethingRegardingAContact";
             content.userInfo = @{@"contact": [HelperTools serializeObject:contact]};
@@ -194,8 +194,8 @@ typedef NS_ENUM(NSUInteger, MLNotificationState) {
     }
     
     UNMutableNotificationContent* content = [UNMutableNotificationContent new];
-    content.title = xmppAccount.connectionProperties.identity.jid;
-    content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) wants to add you to their contact list", @""), contact.contactDisplayName, contact.contactJid];
+    content.title = [HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid];
+    content.body = [NSString stringWithFormat:NSLocalizedString(@"The user %@ (%@) wants to add you to their contact list", @""), contact.contactDisplayName, [HelperTools veloShortJid:contact.contactJid]];
     content.threadIdentifier = [self threadIdentifierWithContact:contact];
     content.categoryIdentifier = @"subscription";
     content.userInfo = @{@"contact": [HelperTools serializeObject:contact]};
@@ -220,7 +220,7 @@ typedef NS_ENUM(NSUInteger, MLNotificationState) {
         NSString* idval = xmppAccount.connectionProperties.identity.jid;        //use this to only show the newest error notification per account
 #endif
         UNMutableNotificationContent* content = [UNMutableNotificationContent new];
-        content.title = xmppAccount.connectionProperties.identity.jid;
+        content.title = [HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid];
         content.body = notification.userInfo[@"message"];
         content.sound = [UNNotificationSound defaultSound];
         UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:idval content:content trigger:nil];

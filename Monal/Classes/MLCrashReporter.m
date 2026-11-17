@@ -42,6 +42,9 @@
 
 +(void) reportPendingCrashes
 {
+    //VELO: i rapporti di crash NON vanno agli sviluppatori di Monal: si cancellano in silenzio
+    [KSCrash.sharedInstance.reportStore deleteAllReports];
+    return;
     //send out pending KSCrash reports
     id<KSCrashReportFilter> alertFilter = [[KSCrashReportFilterAlert alloc]
         initWithTitle:NSLocalizedString(@"Crash Detected", @"Crash reporting")

@@ -457,7 +457,7 @@ struct OmemoKeysForChatView: View {
         .alert(isPresented: $showScannedContactMissmatchAlert) {
             Alert(
                 title: Text("QR code: Fingerprints found"),
-                message: Text("Do you want to trust the scanned fingerprints of contact \(self.scannedJid) when using your account \(self.account!.connectionProperties.identity.jid)?"),
+                message: Text("Do you want to trust the scanned fingerprints of contact \(HelperTools.veloShortJid(self.scannedJid)) when using your account \(HelperTools.veloShortJid(self.account!.connectionProperties.identity.jid))?"),
                 primaryButton: .cancel(Text("No")),
                 secondaryButton: .default(Text("Yes"), action: {
                     resetTrustFromQR(scannedJid: self.scannedJid, scannedFingerprints: self.scannedFingerprints)

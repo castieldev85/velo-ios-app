@@ -340,11 +340,20 @@ $$class_handler(handleFileDownload, $$ID(NSString*, url), $$ID(NSNumber*, histor
     //try to deduce the content type from a given file extension if needed and possible
     if([mimeType isEqualToString:@"application/octet-stream"])
         mimeType = [self getMimeTypeOfOriginalFile:urlComponents.path];
-    
+
+    //VELO: stesso tipo usato dal controllo HEAD (preso dalla busta cifrata), altrimenti il file in cache
+    //avrebbe un tipo diverso da quello del messaggio e non verrebbe piu' trovato (crash in hardlinkFileForMessage)
+    if(!mimeType || [mimeType isEqualToString:@"application/octet-stream"])
+    {
+        NSString* veloType = [[HelperTools defaultsDB] dictionaryForKey:@"veloMediaTypes"][[self genCanonicalUrl:msg.messageText]];
+        if(veloType != nil)
+            mimeType = veloType;
+    }
+
     //make sure we *always* have a mime type
     if(!mimeType)
         mimeType = @"application/octet-stream";
-    
+
     NSString* cacheFilePath = [self calculateCacheFilePathForNewUrl:msg.messageText andMimeType:mimeType];
     
     //encrypted filetransfer

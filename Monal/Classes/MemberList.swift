@@ -183,14 +183,14 @@ struct MemberList: View {
                     //first remove potential ban, then reinvite
                     var outcastResolution: Promise<Void> = Promise.value(())
                     if affiliations[contact] == kMucAffiliationOutcast {
-                        outcastResolution = showPromisingLoadingOverlay(self.overlay, headlineView: Text("Unblocking user"), descriptionView: Text("Unblocking user for this group/channel: \(contact.contactJid as String)")) {
+                        outcastResolution = showPromisingLoadingOverlay(self.overlay, headlineView: Text("Unblocking user"), descriptionView: Text("Unblocking user for this group/channel: \(HelperTools.veloShortJid(contact.contactJid as String))")) {
                             //somehow we have to use toTypedPromise() to make sure the showPromisingLoadingOverlay()
                             //doesn't return a Guarantee<Void> (even though it should autodetect the right type)
                             account.mucProcessor.setAffiliation(self.muc.mucType == kMucTypeGroup ? kMucAffiliationMember : kMucAffiliationNone, ofUser:contact.contactJid, inMuc:self.muc.contactJid).toTypedPromise()
                         }
                     }
                     outcastResolution.then { _ in
-                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting user"), descriptionView: Text("Inviting user to this group/channel: \(contact.contactJid as String)")) {
+                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting user"), descriptionView: Text("Inviting user to this group/channel: \(HelperTools.veloShortJid(contact.contactJid as String))")) {
                             Self.invite(user: contact.contactJid, to: self.muc.contactJid, from: account)
                         }.catch { error in
                             showAlert(title:Text("Error inviting user!"), description:Text(error.localizedDescription))
@@ -202,7 +202,7 @@ struct MemberList: View {
                 } else if newAffiliation == kMucAffiliationOutcast {
                     showActionSheet(title: Text("Block user?"), description: Text("Do you want to block this user from entering this group/channel?")) {
                         DDLogVerbose("Changing affiliation of \(String(describing:contact)) to: \(String(describing:newAffiliation))...")
-                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Blocking member"), descriptionView: Text("Blocking \(contact.contactJid as String)")) {
+                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Blocking member"), descriptionView: Text("Blocking \(HelperTools.veloShortJid(contact.contactJid as String))")) {
                             account.mucProcessor.setAffiliation(newAffiliation, ofUser:contact.contactJid, inMuc:self.muc.contactJid)
                         }.catch { error in
                             showAlert(title:Text("Error blocking user!"), description:Text(error.localizedDescription))
@@ -210,7 +210,7 @@ struct MemberList: View {
                     }
                 } else {
                     DDLogVerbose("Changing affiliation of \(String(describing:contact)) to: \(String(describing:newAffiliation))...")
-                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Changing affiliation"), descriptionView: Text("Changing affiliation to \(mucAffiliationToString(affiliations[contact], roles[contact])): \(contact.contactJid as String)")) {
+                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Changing affiliation"), descriptionView: Text("Changing affiliation to \(mucAffiliationToString(affiliations[contact], roles[contact])): \(HelperTools.veloShortJid(contact.contactJid as String))")) {
                         account.mucProcessor.setAffiliation(newAffiliation, ofUser:contact.contactJid, inMuc:self.muc.contactJid)
                     }.catch { error in
                         showAlert(title:Text("Error changing affiliation!"), description:Text(error.localizedDescription))
@@ -232,10 +232,10 @@ struct MemberList: View {
                         for member in newMemberList {
                             if !memberList.contains(member) {
                                 if self.muc.mucType == kMucTypeGroup {
-                                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Adding new member"), descriptionView: Text("Adding \(member.contactJid as String)...")) {
+                                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Adding new member"), descriptionView: Text("Adding \(HelperTools.veloShortJid(member.contactJid as String))...")) {
                                         account.mucProcessor.setAffiliation(kMucAffiliationMember, ofUser:member.contactJid, inMuc:self.muc.contactJid)
                                     }.done { _ in
-                                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting new member"), descriptionView: Text("Adding \(member.contactJid as String)...")) {
+                                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting new member"), descriptionView: Text("Adding \(HelperTools.veloShortJid(member.contactJid as String))...")) {
                                             Self.invite(user: member.contactJid, to: self.muc.contactJid, from: account)
                                         }.catch { error in
                                             showAlert(title:Text("Error inviting new member!"), description:Text(error.localizedDescription))
@@ -244,7 +244,7 @@ struct MemberList: View {
                                         showAlert(title:Text("Error adding new member!"), description:Text(error.localizedDescription))
                                     }
                                 } else {
-                                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting new participant"), descriptionView: Text("Adding \(member.contactJid as String)...")) {
+                                    showPromisingLoadingOverlay(self.overlay, headlineView: Text("Inviting new participant"), descriptionView: Text("Adding \(HelperTools.veloShortJid(member.contactJid as String))...")) {
                                         Self.invite(user: member.contactJid, to: self.muc.contactJid, from: account)
                                     }.catch { error in
                                         showAlert(title:Text("Error inviting new participant!"), description:Text(error.localizedDescription))
@@ -297,7 +297,7 @@ struct MemberList: View {
                                 view.swipeActions(allowsFullSwipe: false) {
                                     Button("Delete") {
                                         showActionSheet(title: Text("Remove \(mucAffiliationToString(affiliations[contact], roles[contact]))?"), description: self.muc.mucType == kMucTypeGroup ? Text("Do you want to remove that user from this group? That user won't be able to enter it again until added back to the group.") : Text("Do you want to remove that user from this channel? That user will be able to enter it again if you don't block them.")) {
-                                            showPromisingLoadingOverlay(self.overlay, headlineView: Text("Removing \(mucAffiliationToString(affiliations[contact], roles[contact]))"), descriptionView: Text("Removing \(contact.contactJid as String)...")) {
+                                            showPromisingLoadingOverlay(self.overlay, headlineView: Text("Removing \(mucAffiliationToString(affiliations[contact], roles[contact]))"), descriptionView: Text("Removing \(HelperTools.veloShortJid(contact.contactJid as String))...")) {
                                                 account.mucProcessor.setAffiliation(kMucAffiliationNone, ofUser: contact.contactJid, inMuc: self.muc.contactJid)
                                             }.catch { error in
                                                 showAlert(title:Text("Error removing user!"), description:Text(error.localizedDescription))
