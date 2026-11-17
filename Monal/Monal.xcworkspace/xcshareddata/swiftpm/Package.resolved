@@ -1,0 +1,223 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "ActivityIndicatorView",
+        "repositoryURL": "https://github.com/exyte/ActivityIndicatorView.git",
+        "state": {
+          "branch": null,
+          "revision": "41f89372c018decaf965e8dddeb6e5347741beb4",
+          "version": "2.0.2"
+        }
+      },
+      {
+        "package": "AnchoredPopup",
+        "repositoryURL": "https://github.com/exyte/AnchoredPopup.git",
+        "state": {
+          "branch": null,
+          "revision": "f93c51e75ff4e5242328ac24c8fb12f1f1e84eda",
+          "version": "1.3.1"
+        }
+      },
+      {
+        "package": "ASN1Decoder",
+        "repositoryURL": "https://github.com/filom/ASN1Decoder",
+        "state": {
+          "branch": null,
+          "revision": "de491df9742757532e76dd8af5cf620dc3f49a44",
+          "version": "1.10.1"
+        }
+      },
+      {
+        "package": "CocoaLumberjack",
+        "repositoryURL": "https://github.com/cocoalumberjack/cocoalumberjack",
+        "state": {
+          "branch": null,
+          "revision": "c5f2ed4d219866117e135cf648180dc7b66739d3",
+          "version": "3.9.1"
+        }
+      },
+      {
+        "package": "CSQLite",
+        "repositoryURL": "https://github.com/sbooth/CSQLite.git",
+        "state": {
+          "branch": "main",
+          "revision": "d126995f00f971441a1a195cf6be48d673eba376",
+          "version": null
+        }
+      },
+      {
+        "package": "Chat",
+        "repositoryURL": "https://github.com/monal-im/ExyteChat",
+        "state": {
+          "branch": "main",
+          "revision": "9fa1fd204c68de0cbd090bd35a18de17b4ef29ce",
+          "version": null
+        }
+      },
+      {
+        "package": "FLAnimatedImage",
+        "repositoryURL": "https://github.com/Flipboard/FLAnimatedImage",
+        "state": {
+          "branch": null,
+          "revision": "d4f07b6f164d53c1212c3e54d6460738b1981e9f",
+          "version": "1.0.17"
+        }
+      },
+      {
+        "package": "FrameUp",
+        "repositoryURL": "https://github.com/ryanlintott/FrameUp",
+        "state": {
+          "branch": null,
+          "revision": "0fccfdc93a01c8555cec86bf2c64caee30c23704",
+          "version": "0.9.11"
+        }
+      },
+      {
+        "package": "KSCrash",
+        "repositoryURL": "https://github.com/kstenerud/KSCrash",
+        "state": {
+          "branch": null,
+          "revision": "3f77f379c2db001e0c261c2a51b7e2b115d31f91",
+          "version": "2.6.0"
+        }
+      },
+      {
+        "package": "SignalProtocolC",
+        "repositoryURL": "https://github.com/monal-im/libsignal-protocol-c",
+        "state": {
+          "branch": "master",
+          "revision": "0020d1c1c6e7cc0ab09fed5ad1bebf17145eeb87",
+          "version": null
+        }
+      },
+      {
+        "package": "MarqueeLabel",
+        "repositoryURL": "https://github.com/cbpowell/MarqueeLabel",
+        "state": {
+          "branch": null,
+          "revision": "c6b4da400c00dfd5db7a4f6e4915ca531d95fc49",
+          "version": "4.5.3"
+        }
+      },
+      {
+        "package": "ExyteMediaPicker",
+        "repositoryURL": "https://github.com/exyte/MediaPicker.git",
+        "state": {
+          "branch": null,
+          "revision": "3d1db8d5b1f553d066d67a57590f211ab534a531",
+          "version": "3.4.7"
+        }
+      },
+      {
+        "package": "NotificationBannerSwift",
+        "repositoryURL": "https://github.com/Daltron/NotificationBanner",
+        "state": {
+          "branch": null,
+          "revision": "be52806c3b95f9210955a8a94259d40f8a9e928d",
+          "version": "4.0.0"
+        }
+      },
+      {
+        "package": "SAMKeychain",
+        "repositoryURL": "https://github.com/meganz/SAMKeychain",
+        "state": {
+          "branch": null,
+          "revision": "19f05f16b30eed2ed398df30353ec52844e329e5",
+          "version": "2.0.0"
+        }
+      },
+      {
+        "package": "SignalProtocolObjC",
+        "repositoryURL": "https://github.com/monal-im/SignalProtocol-ObjC",
+        "state": {
+          "branch": "master",
+          "revision": "21f107c59d7cc43cd0da9ae6c1a3b175cb475672",
+          "version": null
+        }
+      },
+      {
+        "package": "SnapKit",
+        "repositoryURL": "https://github.com/SnapKit/SnapKit",
+        "state": {
+          "branch": null,
+          "revision": "2842e6e84e82eb9a8dac0100ca90d9444b0307f4",
+          "version": "5.7.1"
+        }
+      },
+      {
+        "package": "CSQLite+MonalTraits",
+        "repositoryURL": "https://github.com/monal-im/sqlite3-package",
+        "state": {
+          "branch": "main",
+          "revision": "4174fb7e23124259f2d6874eb61b301d944421ad",
+          "version": null
+        }
+      },
+      {
+        "package": "SVGKit",
+        "repositoryURL": "https://github.com/SVGKit/SVGKit",
+        "state": {
+          "branch": "3.x",
+          "revision": "6002a0ff6b2d4405805395959b92b38aa24662cb",
+          "version": null
+        }
+      },
+      {
+        "package": "SVGView",
+        "repositoryURL": "https://github.com/exyte/SVGView.git",
+        "state": {
+          "branch": null,
+          "revision": "6465962facdd25cb96eaebc35603afa2f15d2c0d",
+          "version": "1.0.6"
+        }
+      },
+      {
+        "package": "swift-collections",
+        "repositoryURL": "https://github.com/apple/swift-collections",
+        "state": {
+          "branch": null,
+          "revision": "35a1edcb8ebd2bfe251d587f0b69e62af28f508c",
+          "version": "1.7.3"
+        }
+      },
+      {
+        "package": "swift-log",
+        "repositoryURL": "https://github.com/apple/swift-log",
+        "state": {
+          "branch": null,
+          "revision": "4038b6a4f74a1426f47eb1dd5b4bb5628a15d597",
+          "version": "1.16.1"
+        }
+      },
+      {
+        "package": "TOCropViewController",
+        "repositoryURL": "https://github.com/TimOliver/TOCropViewController",
+        "state": {
+          "branch": null,
+          "revision": "d4a6d8100f4b886fdbc8ae399bf144ff3e9afb7e",
+          "version": "2.8.0"
+        }
+      },
+      {
+        "package": "ViewExtractor",
+        "repositoryURL": "https://github.com/GeorgeElsham/ViewExtractor",
+        "state": {
+          "branch": null,
+          "revision": "e20b1944524d4454c2a65c0054ce345c2c5d0185",
+          "version": "2.0.0"
+        }
+      },
+      {
+        "package": "WebRTC",
+        "repositoryURL": "https://github.com/Stasel/WebRTC",
+        "state": {
+          "branch": null,
+          "revision": "6ed87f05368632f71dc95c89c14c051561710925",
+          "version": "150.0.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
