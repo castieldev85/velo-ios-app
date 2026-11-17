@@ -350,10 +350,12 @@ struct VeloLockView: View {
         field.isSecureTextEntry = true
         field.isUserInteractionEnabled = false
         guard let superlayer = window.layer.superlayer else { return }
+        //il campo resta nell'origine (0,0) con dimensione zero: il suo livello "canvas" ospita quello della
+        //finestra senza spostarlo (centrarlo spostava tutta l'app di mezzo schermo)
+        field.frame = .zero
+        field.leftView = UIView(frame: .zero)
+        field.leftViewMode = .always
         window.addSubview(field)
-        field.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([field.centerXAnchor.constraint(equalTo: window.centerXAnchor),
-                                     field.centerYAnchor.constraint(equalTo: window.centerYAnchor)])
         superlayer.addSublayer(field.layer)
         //il livello "canvas" del campo secure (nome interno di UIKit); se non c'è, ultimo sottolivello
         let canvas = field.layer.sublayers?.first { String(describing: type(of: $0.delegate as Any)).contains("Canvas") }
