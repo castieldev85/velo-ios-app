@@ -537,7 +537,7 @@ struct ContactDetails: View {
                             }
                             .actionSheet(isPresented: $showingRemoveContactConfirmation) {
                                 ActionSheet(
-                                    title: Text(contact.isMuc ? NSLocalizedString("Leave this conversation", comment: "") : String(format: NSLocalizedString("Remove %@ from contacts?", comment: ""), contact.contactJid)),
+                                    title: Text(contact.isMuc ? NSLocalizedString("Leave this conversation", comment: "") : String(format: NSLocalizedString("Remove %@ from contacts?", comment: ""), HelperTools.veloShortJid(contact.contactJid as String))),
                                         message: Text(contact.isMuc ? NSLocalizedString("You will no longer receive messages from this conversation", comment: "") : NSLocalizedString("They will no longer see when you are online. They may not be able to send you encrypted messages.", comment: "")),
                                     buttons: [
                                         .cancel(),
@@ -573,7 +573,7 @@ struct ContactDetails: View {
                             }
                             .actionSheet(isPresented: $showingAddContactConfirmation) {
                                 ActionSheet(
-                                    title: Text(contact.isMuc ? (contact.mucType == kMucTypeGroup ? NSLocalizedString("Join Group", comment: "") : NSLocalizedString("Join Channel", comment: "")) : String(format: NSLocalizedString("Add %@ to your contacts?", comment: ""), contact.contactJid)),
+                                    title: Text(contact.isMuc ? (contact.mucType == kMucTypeGroup ? NSLocalizedString("Join Group", comment: "") : NSLocalizedString("Join Channel", comment: "")) : String(format: NSLocalizedString("Add %@ to your contacts?", comment: ""), HelperTools.veloShortJid(contact.contactJid as String))),
                                     message: Text(contact.isMuc ? NSLocalizedString("You will receive subsequent messages from this conversation", comment: "") : NSLocalizedString("They will see when you are online. They will be able to send you encrypted messages.", comment: "")),
                                     buttons: [
                                         .cancel(),

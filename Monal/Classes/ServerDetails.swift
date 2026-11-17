@@ -256,7 +256,7 @@ struct ServerDetails: View {
         for entry in conferenceServers {
             result.append(
                 EntryData(
-                    title: String(format: NSLocalizedString("Server: %@", comment: ""), entry["jid"] ?? "error"),
+                    title: String(format: NSLocalizedString("Server: %@", comment: ""), HelperTools.veloShortJid(entry["jid"] ?? "error")),
                     description: String(format: NSLocalizedString("%@ (type '%@', category '%@')", comment: ""), entry["name"] ?? "<unknown name>", entry["type"] ?? "<unknown>", entry["category"] ?? "<unknown>"),
                     status: (entry["type"] ?? "<unknown>") == "text" ? .success : .normal
                 )
@@ -522,7 +522,7 @@ struct ServerDetails: View {
             }
 
         }
-        .navigationTitle(connection.identity.domain)
+        .navigationTitle(NSLocalizedString("Server", comment: ""))
         .listStyle(.grouped)
     }
 }

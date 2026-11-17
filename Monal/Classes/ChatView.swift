@@ -791,7 +791,7 @@ struct ChatView: View {
                 }
                 if blockOnModeration, let participantJid = mlMessage.participantJid {
                     let _ = promise.done { _ in
-                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Blocking user"), descriptionView: Text("Blocking \(participantJid)")) {
+                        showPromisingLoadingOverlay(self.overlay, headlineView: Text("Blocking user"), descriptionView: Text("Blocking \(HelperTools.veloShortJid(participantJid))")) {
                             DDLogVerbose("Changing affiliation of \(participantJid) to: \(String(describing:kMucAffiliationOutcast))...")
                             return account.mucProcessor.setAffiliation(kMucAffiliationOutcast, ofUser:participantJid, inMuc:contact.obj.contactJid).toTypedPromise()
                         }.catch { error in

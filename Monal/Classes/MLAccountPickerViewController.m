@@ -34,7 +34,7 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"AccountCell" forIndexPath:indexPath];
     xmpp* xmppAccount = [MLXMPPManager sharedInstance].connectedXMPP[indexPath.row];
-    cell.textLabel.text=xmppAccount.connectionProperties.identity.jid;
+    cell.textLabel.text=[HelperTools veloShortJid:xmppAccount.connectionProperties.identity.jid];
     return cell;
 }
 

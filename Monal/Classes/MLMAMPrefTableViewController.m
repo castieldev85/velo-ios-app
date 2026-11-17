@@ -32,7 +32,7 @@
 -(void) viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
-    self.navigationItem.title = self.xmppAccount.connectionProperties.identity.domain;
+    self.navigationItem.title = NSLocalizedString(@"Server", @"");
     self.mamPref = [NSMutableArray new];
     [self.mamPref addObject:@{@"Title":NSLocalizedString(@"Always archive", @""), @"Description":NSLocalizedString(@"All messages are archived by default.", @""), @"value":@"always"}];
     [self.mamPref addObject:@{@"Title":NSLocalizedString(@"Never archive", @""), @"Description":NSLocalizedString(@"Messages never archived by default.", @""), @"value":@"never"}];

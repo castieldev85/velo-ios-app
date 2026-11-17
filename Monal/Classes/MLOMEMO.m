@@ -808,7 +808,7 @@ $$instance_handler(handleBundleFetchResult, account.omemo, $$ID(xmpp*, account),
                     DDLogWarn(@"Got new %@ deviceid %@ for own account %@", trustLevel, rid, jid);
                     UNMutableNotificationContent* content = [UNMutableNotificationContent new];
                     content.title = NSLocalizedString(@"New omemo device", @"");;
-                    content.subtitle = jid;
+                    content.subtitle = [HelperTools veloShortJid:jid];
                     content.body = [NSString stringWithFormat:NSLocalizedString(@"Detected a new %@ omemo device on your account: %@", @"OMEMO warning shown as notification"), trustLevel, rid];
                     content.sound = [UNNotificationSound defaultSound];
                     content.categoryIdentifier = @"simple";
@@ -1013,12 +1013,30 @@ $$
     //queue all actions until the catchup was done
     //OR
     //queue all actions until all devicelists and bundles of this jid are fetched
-    if(!self.state.catchupDone || ([self.state.openDevicelistFetches containsObject:jid] || (self.state.openBundleFetches[jid] != nil && self.state.openBundleFetches[jid].count > 0)))
+    //VELO: aspettiamo anche l'elenco PQ del contatto, per sapere se e' una Velo
+    BOOL veloPQFetching = NO;
+    @synchronized(self.veloPQOpenFetches) {
+        veloPQFetching = [self.veloPQOpenFetches containsObject:jid];
+    }
+    if(!self.state.catchupDone || veloPQFetching || ([self.state.openDevicelistFetches containsObject:jid] || (self.state.openBundleFetches[jid] != nil && self.state.openBundleFetches[jid].count > 0)))
     {
         @synchronized(self.state.queuedKeyTransportElements) {
             if(self.state.queuedKeyTransportElements[jid] == nil)
                 self.state.queuedKeyTransportElements[jid] = [NSMutableSet new];
             [self.state.queuedKeyTransportElements[jid] unionSet:rids];
+        }
+        return;
+    }
+    
+    //VELO: a un contatto con chiavi PQ non mandiamo mai l'OMEMO vecchio, nemmeno come messaggio di servizio:
+    //la Velo Android si fida in automatico solo della PRIMA chiave che vede, e deve essere quella PQ
+    if([self veloPQHasDevicesFor:jid])
+    {
+        DDLogInfo(@"VELO PQ: skipping legacy KeyTransportElement to %@ (contact has PQ devices)", jid);
+        @synchronized(self.state.queuedSessionRepairs) {
+            for(NSNumber* rid in rids)
+                if(rid != nil && self.state.queuedSessionRepairs[jid] != nil)
+                    [self.state.queuedSessionRepairs[jid] removeObject:rid];
         }
         return;
     }
@@ -1728,6 +1746,8 @@ $$instance_handler(veloPQContactDevicelistResult, account.omemo, $$ID(xmpp*, acc
         DDLogWarn(@"VELO PQ: devicelist fetch of %@ failed: %@ / %@", jid, errorIq, errorReason);
     //VELO: la chat ricontrolla le chiavi solo ora che anche l'elenco PQ e' arrivato
     [self sendFetchUpdateNotificationForJid:jid];
+    //e i messaggi di servizio in attesa ripartono (o vengono scartati se il contatto e' PQ)
+    [self retriggerKeyTransportElementsForJid:jid];
 $$
 
 -(void) veloPQHandleDeviceList:(NSArray<NSNumber*>*) receivedIds forJid:(NSString*) jid

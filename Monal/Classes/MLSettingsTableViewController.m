@@ -153,7 +153,7 @@ enum DummySettingsRows {
     {
         case kSettingSectionAccounts: return [self getAccountNum] + SettingsAccountRowsCnt;
         case kSettingSectionApp: return SettingsAppRowsCnt;
-        case kSettingSectionSupport: return SettingsSupportRowCnt;
+        case kSettingSectionSupport: return 0;      //VELO: supporto, segnalazioni e FAQ portavano ai siti di Monal fuori da Tor
 #ifndef DEBUG
         case kSettingSectionAbout: return [[HelperTools defaultsDB] boolForKey:@"showLogInSettings"] ? SettingsAboutRowsWithLogCnt : SettingsAboutRowsCntORLogRow;
 #else
@@ -318,7 +318,16 @@ enum DummySettingsRows {
         default:
             unreachable();
     }
+    cell.hidden = (indexPath.section == kSettingSectionAbout && (indexPath.row == RateMonalRow || indexPath.row == PrivacyRow || indexPath.row == AboutRow));
     return cell;
+}
+
+//VELO: "Valuta", "Privacy" e "Informazioni" erano di Monal (App Store e siti fuori da Tor): righe nascoste
+-(CGFloat) tableView:(UITableView*) tableView heightForRowAtIndexPath:(NSIndexPath*) indexPath
+{
+    if(indexPath.section == kSettingSectionAbout && (indexPath.row == RateMonalRow || indexPath.row == PrivacyRow || indexPath.row == AboutRow))
+        return 0;
+    return UITableViewAutomaticDimension;
 }
 
 -(NSString*) tableView:(UITableView*) tableView titleForHeaderInSection:(NSInteger) section
@@ -329,7 +338,7 @@ enum DummySettingsRows {
         case kSettingSectionApp:
             return NSLocalizedString(@"App", @"");
         case kSettingSectionSupport:
-            return NSLocalizedString(@"Support", @"");
+            return nil;
         case kSettingSectionAbout:
             return NSLocalizedString(@"About", @"");
         default:
@@ -341,6 +350,8 @@ enum DummySettingsRows {
 -(void)tableView:(UITableView*) tableView didSelectRowAtIndexPath:(NSIndexPath*) indexPath
 {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if(indexPath.section == kSettingSectionSupport || (indexPath.section == kSettingSectionAbout && (indexPath.row == RateMonalRow || indexPath.row == PrivacyRow || indexPath.row == AboutRow)))
+        return;
     switch(indexPath.section)
     {
         case kSettingSectionAccounts: {

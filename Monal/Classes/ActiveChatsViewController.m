@@ -662,6 +662,8 @@ static BOOL _dnssecWarningDisplayed;
     DDLogDebug(@"active chats view did appear");
     [super viewDidAppear:animated];
     [self refresh];
+    //VELO: al primo avvio dopo un aggiornamento la barra delle storie poteva restare invisibile
+    [VeloStoriesUI attachHeaderTo:self.chatListTable parent:self];
 }
 
 -(void) sheetDismissed

@@ -57,7 +57,7 @@ struct OmemoQrCodeView: View {
             .resizable()
             .scaledToFit()
             .aspectRatio(1, contentMode: .fit)
-            .navigationBarTitle(Text("Keys of \(self.jid)"), displayMode: .inline)
+            .navigationBarTitle(Text("Keys of \(HelperTools.veloShortJid(self.jid))"), displayMode: .inline)
     }
 }
 

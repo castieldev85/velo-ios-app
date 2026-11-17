@@ -527,7 +527,7 @@ $$class_handler(handleBookmarks2FetchResult, $$ID(xmpp*, account), $$BOOL(succes
                     [[MLXMLNode alloc] initWithElement:localNotificationSetting]
                 ] andData:nil],
                 [[MLXMLNode alloc] initWithElement:@"added-by" andNamespace:@"urn:monal.im:bookmarks:info" withAttributes:@{
-                    @"name": @"Monal",
+                    @"name": @"Velo",
                     @"version": infoDict[@"CFBundleShortVersionString"],
                     @"build": infoDict[@"CFBundleVersion"],
                 } andChildren:@[] andData:nil],

@@ -63,7 +63,7 @@ struct PasswordMigration: View {
                     ForEach(Array(self.needingMigration.keys.enumerated()), id:\.element) { _, id in
                         let jid = "\(self.needingMigration[id]?["username"] ?? "<unknown>" as NSString)@\(self.needingMigration[id]?["domain"] ?? "<unknown>" as NSString)"
                         VStack {
-                            Toggle(jid, isOn:Binding(
+                            Toggle(HelperTools.veloShortJid(jid), isOn:Binding(
                                 //our toggle is on, if we have a password AND the account is in enabled state
                                 //(e.g. the user can enter a password, but keep the account disabled, if he wants)
                                 get: { (self.needingMigration[id]?["password"] as? String ?? "") != "" && (self.needingMigration[id]?["enabled"] as! NSNumber).boolValue },

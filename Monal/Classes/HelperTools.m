@@ -2975,9 +2975,9 @@ static void notification_center_logging(CFNotificationCenterRef center, void* ob
 {
     u_int32_t i=arc4random();
 #if TARGET_OS_MACCATALYST
-    NSString* resource = [NSString stringWithFormat:@"Monal-macOS.%@", [self hexadecimalString:[NSData dataWithBytes: &i length: sizeof(i)]]];
+    NSString* resource = [NSString stringWithFormat:@"Velo-macOS.%@", [self hexadecimalString:[NSData dataWithBytes: &i length: sizeof(i)]]];
 #else
-    NSString* resource = [NSString stringWithFormat:@"Monal-iOS.%@", [self hexadecimalString:[NSData dataWithBytes: &i length: sizeof(i)]]];
+    NSString* resource = [NSString stringWithFormat:@"Velo-iOS.%@", [self hexadecimalString:[NSData dataWithBytes: &i length: sizeof(i)]]];
 #endif
     return resource;
 }
@@ -3008,7 +3008,7 @@ static void notification_center_logging(CFNotificationCenterRef center, void* ob
         else if(type == MLVersionTypeLog)
             return _versionInfoCache[@(type)] = [NSString stringWithFormat:@"Version %@ (patch level %@), %@ on iOS/macOS %@", rawVersionString, [self patchLevel], [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleIdentifier"], [UIDevice currentDevice].systemVersion];
         else if(type==MLVersionTypeUserAgent)
-            return _versionInfoCache[@(type)] = [[HelperTools defaultsDB] boolForKey: @"allowVersionIQ"] ? [NSString stringWithFormat:@"Monal %@", rawVersionString] : @"Monal";
+            return _versionInfoCache[@(type)] = [[HelperTools defaultsDB] boolForKey: @"allowVersionIQ"] ? [NSString stringWithFormat:@"Velo %@", rawVersionString] : @"Velo";
         unreachable(@"unknown version type!");
     }
 }
@@ -3733,6 +3733,30 @@ a=%@\r\n", mid, candidate];
             [backtrace addObject:[NSString stringWithFormat:@"%-3d %-30s 0x%016lx", i, "???", addresses[i]]];
     }
     return backtrace;
+}
+
+@end
+
+//VELO: nessuna scritta "Monal" visibile, in nessuna lingua (le traduzioni arrivano dal progetto Monal)
+@interface NSBundle (VeloName)
+@end
+
+@implementation NSBundle (VeloName)
+
+-(NSString*) velo_localizedStringForKey:(NSString*) key value:(NSString*) value table:(NSString*) tableName
+{
+    NSString* result = [self velo_localizedStringForKey:key value:value table:tableName];
+    if(result != nil && [result rangeOfString:@"Monal"].location != NSNotFound)
+        result = [result stringByReplacingOccurrencesOfString:@"Monal" withString:@"Velo"];
+    return result;
+}
+
++(void) load
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        swizzle([NSBundle class], @selector(localizedStringForKey:value:table:), @selector(velo_localizedStringForKey:value:table:));
+    });
 }
 
 @end

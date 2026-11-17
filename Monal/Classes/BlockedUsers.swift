@@ -31,7 +31,7 @@ struct BlockedUsers: View {
         } else {
             List {
                 ForEach(blockedJids, id: \.self) { blockedJid in
-                    Text(blockedJid)
+                    Text(HelperTools.veloShortJid(blockedJid))
                 }
                 .onDelete { indexSet in
                     for row in indexSet {

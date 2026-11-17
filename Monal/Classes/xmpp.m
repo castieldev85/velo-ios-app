@@ -241,7 +241,7 @@ static NSRegularExpression* fastTokenRemovalRegex;
 #else
         @"type": @"phone",
 #endif
-        @"name": @"Monal",
+        @"name": @"Velo",
     } andChildren:@[] andData:nil];
     _capsFeatures = [HelperTools getOwnFeatureSet];
     NSString* client = [NSString stringWithFormat:@"%@/%@//%@", [_capsIdentity findFirst:@"/@category"], [_capsIdentity findFirst:@"/@type"], [_capsIdentity findFirst:@"/@name"]];
@@ -3417,7 +3417,7 @@ static NSRegularExpression* fastTokenRemovalRegex;
                 sasl2UserAgent = [[MLXMLNode alloc] initWithElement:@"user-agent" withAttributes:@{
                     @"id":[[HelperTools deviceUUID] UUIDString],
                 } andChildren:@[
-                    [[MLXMLNode alloc] initWithElement:@"software" andData:@"Monal IM"],
+                    [[MLXMLNode alloc] initWithElement:@"software" andData:@"Velo"],
                     [[MLXMLNode alloc] initWithElement:@"device" andData:[[UIDevice currentDevice] name]],
                 ] andData:nil];
             
@@ -3451,9 +3451,9 @@ static NSRegularExpression* fastTokenRemovalRegex;
                 
                 [sasl2InlinedElements addObject:[[MLXMLNode alloc] initWithElement:@"bind" andNamespace:@"urn:xmpp:bind:0" withAttributes:@{} andChildren:@[
 #if TARGET_OS_MACCATALYST
-                    [[MLXMLNode alloc] initWithElement:@"tag" andData: @"Monal-macOS"],
+                    [[MLXMLNode alloc] initWithElement:@"tag" andData: @"Velo-macOS"],
 #else
-                    [[MLXMLNode alloc] initWithElement:@"tag" andData: @"Monal-iOS"],
+                    [[MLXMLNode alloc] initWithElement:@"tag" andData: @"Velo-iOS"],
 #endif
                     //inline carbons enable into bind2 if possible
                     nilWrapper(

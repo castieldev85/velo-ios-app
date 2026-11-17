@@ -163,7 +163,7 @@ struct AddContactMenu: View {
                     Self.join(muc: jid, from: account)
                 }.done { _ in
                     self.newContact = MLContact.createContact(fromJid: jid, andAccountID: account.accountID)
-                    successAlert(title: Text("Success!"), message: Text("Successfully joined group/channel \(jid)!"))
+                    successAlert(title: Text("Success!"), message: Text("Successfully joined group/channel \(HelperTools.veloShortJid(jid))!"))
                 }.catch { error in
                     errorAlert(title: Text("Error entering group/channel!"), message: Text(error.localizedDescription))
                 }
@@ -272,7 +272,7 @@ struct AddContactMenu: View {
                 }
             }))
         }
-        .richAlert(isPresented: $invitationResult, title:Text("Invitation for \(splitJid["host"]!) created")) { data in
+        .richAlert(isPresented: $invitationResult, title:Text("Invitation created")) { data in
             VStack {
                 Image(uiImage: createQrCode(value: data["landing"] as! String))
                     .interpolation(.none)
@@ -334,7 +334,7 @@ struct AddContactMenu: View {
                                 if result["success"] as! Bool == true {
                                     invitationResult = result
                                 } else {
-                                    errorAlert(title:Text("Failed to create invitation for \(splitJid["host"]!)"), message:Text(result["error"] as! String))
+                                    errorAlert(title:Text("Failed to create invitation"), message:Text(result["error"] as! String))
                                 }
                             }
                         })

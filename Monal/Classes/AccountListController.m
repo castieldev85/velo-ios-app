@@ -81,8 +81,8 @@
     NSDictionary* account = [self.accountList objectAtIndex:accNo];
     MLAssert(account != nil, ([NSString stringWithFormat:@"Expected non nil account in row %lu", (unsigned long)accNo]));
     if([(NSString*)[account objectForKey:@"domain"] length] > 0) {
-        cell.textLabel.text = [NSString stringWithFormat:@"%@@%@", [[self.accountList objectAtIndex:accNo] objectForKey:@"username"],
-                                [[self.accountList objectAtIndex:accNo] objectForKey:@"domain"]];
+        //VELO: il dominio non si mostra
+        cell.textLabel.text = [NSString stringWithFormat:@"%@", [[self.accountList objectAtIndex:accNo] objectForKey:@"username"]];
     }
     else
     {

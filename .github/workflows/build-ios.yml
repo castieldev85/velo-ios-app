@@ -68,6 +68,9 @@ jobs:
           ! grep -rq "__VELO_" Monal/Classes/MLConstants.h Monal/Monal.xcodeproj/project.pbxproj Monal/Monal.ios.entitlements Monal/NotificationService/NotificationService.ios.entitlements
           echo "configurazione applicata"
 
+      - name: Traduzioni senza "Monal"
+        run: python3 scripts/velo-strings.py
+
       - name: Toolchain Rust + librerie native
         run: |
           rustup show || true

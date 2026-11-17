@@ -669,7 +669,7 @@ enum DummySettingsRows {
                 if(self.editMode)
                 {
                     // don't allow jid editing
-                    [thecell initCell:NSLocalizedString(@"XMPP ID", @"") withLabel:self.jid];
+                    [thecell initCell:NSLocalizedString(@"XMPP ID", @"") withLabel:[HelperTools veloShortJid:self.jid]];
                 }
                 else
                 {

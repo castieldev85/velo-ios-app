@@ -573,7 +573,7 @@ static const int pingFreqencyMinutes = 5;       //about the same Conversations u
         {
             UNMutableNotificationContent* content = [UNMutableNotificationContent new];
             content.title = NSLocalizedString(@"Account disabled", @"");;
-            content.subtitle = jid;
+            content.subtitle = [HelperTools veloShortJid:jid];
             content.body = NSLocalizedString(@"You restored an iCloud backup of Monal, please open the app to reenable this account.", @"");
             content.sound = [UNNotificationSound defaultSound];
             content.categoryIdentifier = @"simple";
@@ -585,7 +585,11 @@ static const int pingFreqencyMinutes = 5;       //about the same Conversations u
         
         return;
     }
-    MLXMPPIdentity* identity = [[MLXMPPIdentity alloc] initWithJid:jid password:password andResource:[account objectForKey:kResource]];
+    //VELO: le installazioni vecchie avevano la risorsa "Monal-iOS.xxx", visibile a server e contatti
+    NSString* veloResource = [account objectForKey:kResource];
+    if([veloResource hasPrefix:@"Monal-"])
+        veloResource = [@"Velo-" stringByAppendingString:[veloResource substringFromIndex:6]];
+    MLXMPPIdentity* identity = [[MLXMPPIdentity alloc] initWithJid:jid password:password andResource:veloResource];
     MLXMPPServer* server = [[MLXMPPServer alloc] initWithHost:[account objectForKey:kServer] andPort:[account objectForKey:kPort] andDirectTLS:[[account objectForKey:kDirectTLS] boolValue]];
     xmpp* xmppAccount = [[xmpp alloc] initWithServer:server andIdentity:identity andAccountID:[account objectForKey:kAccountID]];
     xmppAccount.statusMessage = [account objectForKey:@"statusMessage"];

@@ -144,6 +144,32 @@ struct VeloStoriesBar: View {
         return controller.view
     }
 
+    /// Rimette la barra come intestazione, agganciata alla schermata e larga quanto l'elenco.
+    /// Riassegnare tableHeaderView obbliga la tabella a ricalcolarla (al primo avvio restava vuota).
+    @objc static func attachHeader(to table: UITableView, parent: UIViewController) {
+        let controller: UIHostingController<VeloStoriesBar>
+        if let existing = host {
+            controller = existing
+        } else {
+            controller = UIHostingController(rootView: VeloStoriesBar())
+            controller.view.backgroundColor = .clear
+            host = controller
+        }
+        if controller.parent !== parent {
+            controller.willMove(toParent: nil)
+            controller.removeFromParent()
+            parent.addChild(controller)
+            controller.didMove(toParent: parent)
+        }
+        let width = max(table.bounds.size.width, 320)
+        controller.view.frame = CGRect(x: 0, y: 0, width: width, height: 100)
+        controller.view.autoresizingMask = [.flexibleWidth]
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        table.tableHeaderView = controller.view
+        VeloStoriesModel.shared.reload()
+    }
+
     private static func present(_ controller: UIViewController) {
         guard let root = (UIApplication.shared.delegate as? MonalAppDelegate)?.window?.rootViewController else { return }
         var top = root
