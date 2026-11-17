@@ -117,6 +117,11 @@ jobs:
           rm -rf build/Payload build/Velo-unsigned.ipa
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
+          echo "== simboli dell'app presi da VeloPQ (devono essere 0) =="
+          nm -m "$APP/Monal" | grep -c "(from VeloPQ)" || true
+          nm -m "$APP/Monal" | grep "(from VeloPQ)" | head -20 || true
+          echo "== simboli di monalxmpp presi da VeloPQ =="
+          nm -m "$APP/Frameworks/monalxmpp.framework/monalxmpp" | grep "(from VeloPQ)" | grep -v -i "velo\|signal\|\$s" | head -20 || true
           (cd build && zip -qry Velo-unsigned.ipa Payload)
           ls -lh build/Velo-unsigned.ipa
           # repository pubblico: gli artifact li scarica chiunque, quindi l'IPA (che contiene gli

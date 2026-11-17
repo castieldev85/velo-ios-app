@@ -22,7 +22,6 @@
 		261E542523A0A1D300394F59 /* monalxmpp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 26CC579223A0867400ABB92A /* monalxmpp.framework */; };
 		261E542623A0A1D300394F59 /* monalxmpp.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 26CC579223A0867400ABB92A /* monalxmpp.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C44954D05001F9B0122C1683 /* VeloPQ in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 4D1651061B9C82A869DC0E08 /* VeloPQ */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		F5B88F95D0BC15BB1B84EF3C /* VeloPQ in Frameworks */ = {isa = PBXBuildFile; productRef = 4D1651061B9C82A869DC0E08 /* VeloPQ */; };
 		262797AF178A577300B85D94 /* MLContactCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 262797AE178A577300B85D94 /* MLContactCell.m */; };
 		262AEFE820AE756800498F82 /* MLMAMPrefTableViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 262AEFE720AE756800498F82 /* MLMAMPrefTableViewController.m */; };
 		262E51921AD8CAC600788351 /* MLButtonCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 262E51901AD8CAC600788351 /* MLButtonCell.m */; };
@@ -899,7 +898,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F5B88F95D0BC15BB1B84EF3C /* VeloPQ in Frameworks */,
 				84F632ED2F7F3EEB00A59209 /* Combine.framework in Frameworks */,
 				84774DF52D1A935000B15E51 /* ExyteChat in Frameworks */,
 				84A8340C2F1156F5004738AE /* WebRTC in Frameworks */,
