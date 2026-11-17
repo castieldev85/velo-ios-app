@@ -22,7 +22,8 @@ if hasLibSignal {
         .binaryTarget(name: "SignalFfi", path: "SignalFfi.xcframework"),
         .target(name: "LibSignalClient", dependencies: ["SignalFfi"],
                 swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]),
-        .target(name: "VeloPQ", dependencies: ["LibSignalClient", "VeloPQCrypto"]),
+        .target(name: "VeloPQ", dependencies: ["LibSignalClient", "VeloPQCrypto"],
+                linkerSettings: [.linkedLibrary("c++")]),   // BoringSSL dentro libsignal e' C++
     ]
     // Dinamica: libsignal (Rust) ha simboli con gli stessi nomi della libsignal-protocol-c di Monal
     // (signal_message_*) e un secondo runtime Rust; in un'immagine separata non si scontrano.
