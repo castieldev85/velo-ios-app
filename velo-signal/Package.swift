@@ -24,7 +24,9 @@ if hasLibSignal {
                 swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]),
         .target(name: "VeloPQ", dependencies: ["LibSignalClient", "VeloPQCrypto"]),
     ]
-    products.append(.library(name: "VeloPQ", targets: ["VeloPQ"]))
+    // Dinamica: libsignal (Rust) ha simboli con gli stessi nomi della libsignal-protocol-c di Monal
+    // (signal_message_*) e un secondo runtime Rust; in un'immagine separata non si scontrano.
+    products.append(.library(name: "VeloPQ", type: .dynamic, targets: ["VeloPQ"]))
 }
 
 let package = Package(
