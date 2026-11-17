@@ -938,6 +938,8 @@ class SwiftuiInterface : NSObject {
                 host = UIHostingController(rootView:AnyView(UIKitWorkaround(WelcomeLogIn(advancedMode: true, delegate: delegate))))
             case "ChatPlaceholder":
                 host = UIHostingController(rootView:AnyView(ChatPlaceholder()))
+            case "VeloAppearance":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(VeloAppearanceView())))
             case "GeneralSettings" :
                 host = UIHostingController(rootView:AnyView(UIKitWorkaround(GeneralSettings())))
             case "ActiveChatsGeneralSettings":

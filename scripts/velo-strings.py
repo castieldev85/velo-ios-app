@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import pathlib, re
 
-line = re.compile(r'^(\s*"(?:[^"\]|\.)*"\s*=\s*")(.*)(";\s*)$')
+line = re.compile(r'^(\s*"(?:[^"\\]|\\.)*"\s*=\s*")(.*)(";\s*)$')
 changed = 0
 for root in ["Monal/localization", "Monal/shareSheet-iOS/localization"]:
     for f in pathlib.Path(root).rglob("*.strings"):

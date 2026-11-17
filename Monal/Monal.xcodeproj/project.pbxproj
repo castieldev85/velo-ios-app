@@ -15,6 +15,7 @@
 		20ED55852BADDA5C0005783E /* GeneralSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20ED55842BADDA5C0005783E /* GeneralSettings.swift */; };
 		9A95DE72A0E0A02AC93E46DC /* VeloLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D9A3AA537B155B96C42CC4 /* VeloLock.swift */; };
 		5E1A7C3B2D4F6A8B9C0D1E2F /* VeloStories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2B8D4C3E5A7B9C0D1E2F3A /* VeloStories.swift */; };
+		7A3C9E5D4F6B8A0C1D2E3F40 /* VeloTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4D0F6E5A7C9B1D2E3F4051 /* VeloTheme.swift */; };
 		2601D9CB0FBF25EF004DB939 /* sworim.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 2601D9CA0FBF25EF004DB939 /* sworim.sqlite */; };
 		260773C4232FC4E800BFD50F /* NotificationService.m in Sources */ = {isa = PBXBuildFile; fileRef = 260773C3232FC4E800BFD50F /* NotificationService.m */; };
 		2609B5291FD5B26800F09FA1 /* MLSplitViewDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2609B5281FD5B26800F09FA1 /* MLSplitViewDelegate.m */; };
@@ -392,6 +393,7 @@
 		20ED55842BADDA5C0005783E /* GeneralSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettings.swift; sourceTree = "<group>"; };
 		96D9A3AA537B155B96C42CC4 /* VeloLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeloLock.swift; sourceTree = "<group>"; };
 		6F2B8D4C3E5A7B9C0D1E2F3A /* VeloStories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeloStories.swift; sourceTree = "<group>"; };
+		8B4D0F6E5A7C9B1D2E3F4051 /* VeloTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeloTheme.swift; sourceTree = "<group>"; };
 		213F5BFD4599EC9317B99E97 /* Pods-Monal.appstore-quicksy.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Monal.appstore-quicksy.xcconfig"; path = "Target Support Files/Pods-Monal/Pods-Monal.appstore-quicksy.xcconfig"; sourceTree = "<group>"; };
 		21E99538324C14220843F325 /* Pods-shareSheet.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shareSheet.debug.xcconfig"; path = "Target Support Files/Pods-shareSheet/Pods-shareSheet.debug.xcconfig"; sourceTree = "<group>"; };
 		222F09C97CFF93A2CF1007F3 /* Pods-MonalUITests.alpha-ios.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MonalUITests.alpha-ios.xcconfig"; path = "Target Support Files/Pods-MonalUITests/Pods-MonalUITests.alpha-ios.xcconfig"; sourceTree = "<group>"; };
@@ -1173,6 +1175,7 @@
 				20ED55842BADDA5C0005783E /* GeneralSettings.swift */,
 				96D9A3AA537B155B96C42CC4 /* VeloLock.swift */,
 				6F2B8D4C3E5A7B9C0D1E2F3A /* VeloStories.swift */,
+				8B4D0F6E5A7C9B1D2E3F4051 /* VeloTheme.swift */,
 			);
 			name = Settings;
 			sourceTree = "<group>";
@@ -2381,6 +2384,7 @@
 				20ED55852BADDA5C0005783E /* GeneralSettings.swift in Sources */,
 				9A95DE72A0E0A02AC93E46DC /* VeloLock.swift in Sources */,
 				5E1A7C3B2D4F6A8B9C0D1E2F /* VeloStories.swift in Sources */,
+				7A3C9E5D4F6B8A0C1D2E3F40 /* VeloTheme.swift in Sources */,
 				84E55E7D2964424E003E191A /* ActiveChatsViewController.m in Sources */,
 				C1E8A7F72B8E47C300760220 /* EditGroupSubject.swift in Sources */,
 				263DFAC32187D0E00038E716 /* MLLinkCell.m in Sources */,

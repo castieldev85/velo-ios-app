@@ -18,6 +18,7 @@
 #import <monalxmpp/MLImageManager.h>
 #import <monalxmpp/MLFiletransferInfo.h>
 #import <QuartzCore/QuartzCore.h>
+#import <Monal-Swift.h>
 
 @interface MLContactCell()
 
@@ -40,6 +41,7 @@
     [[MLImageManager sharedInstance] getIconForContact:contact withCompletion:^(UIImage *image) {
         self.userImage.image = image;
     }];
+    [self veloStyle];
     
     if(contact.isMuc && contact.isMentionOnly)
     {
@@ -51,6 +53,25 @@
         self.muteBadge.hidden = !contact.isMuted;
         self.mentionBadge.hidden = YES;
     }
+}
+
+//VELO: elenco in stile Telegram, coi colori e le forme del tema scelto in Aspetto
+-(void) veloStyle
+{
+    self.backgroundColor = [VeloTheme pageColor];
+    self.contentView.backgroundColor = [VeloTheme pageColor];
+    CGFloat side = MAX(self.userImage.bounds.size.width, 40);
+    self.userImage.layer.cornerRadius = [VeloTheme avatarRadiusForSize:side];
+    self.userImage.layer.masksToBounds = YES;
+    self.userImage.contentMode = UIViewContentModeScaleAspectFill;
+    self.displayName.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    self.centeredDisplayName.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    self.statusText.numberOfLines = MAX(1, [VeloTheme listLineCount] - 1);
+    self.statusText.textColor = [UIColor secondaryLabelColor];
+    self.badge.backgroundColor = [VeloTheme tintColor];
+    [self.badge setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.badge.layer.cornerRadius = MAX(self.badge.bounds.size.height, 20) / 2;
+    self.badge.layer.masksToBounds = YES;
 }
 
 -(void) displayLastMessage:(MLMessage* _Nullable) lastMessage forContact:(MLContact*) contact

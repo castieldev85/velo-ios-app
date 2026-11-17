@@ -82,6 +82,13 @@ jobs:
           pod --version
           pod install --repo-update
 
+      - name: Pacchetti Swift (libreria chat con angoli e testo di Velo)
+        working-directory: Monal
+        run: |
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -workspace Monal.xcworkspace -scheme "Monal" -clonedSourcePackagesDirPath "$PWD/SourcePackages"
+          python3 ../scripts/velo-patch-chat.py "$PWD/SourcePackages"
+
       - name: Archive (senza firma)
         working-directory: Monal
         run: |
@@ -89,6 +96,8 @@ jobs:
           xcodebuild \
             -workspace Monal.xcworkspace \
             -scheme "Monal" \
+            -clonedSourcePackagesDirPath "$PWD/SourcePackages" \
+            -disableAutomaticPackageResolution \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$PWD/build/Monal.xcarchive" \

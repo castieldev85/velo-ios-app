@@ -584,6 +584,7 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     //VELO: blocco col PIN, autodistruzione, protezione screenshot
     [[VeloLockController shared] attachTo:self.window];
     [[VeloLockController shared] appDidBecomeActive];
+    [VeloTheme apply];
     
     [self updateAppIconIfNeeded];
     

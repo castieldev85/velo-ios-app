@@ -34,6 +34,7 @@ enum SettingsAccountRows {
 };
 
 enum SettingsAppRows {
+    VeloAppearanceRow,
     GeneralSettingsRow,
     SoundsRow,
     SettingsAppRowsCnt
@@ -253,6 +254,9 @@ enum DummySettingsRows {
         }
         case kSettingSectionApp: {
             switch(indexPath.row) {
+                case VeloAppearanceRow:
+                    [cell initTapCell:@"Aspetto"];
+                    break;
                 case GeneralSettingsRow:
                     [cell initTapCell:NSLocalizedString(@"General Settings", @"")];
                     break;
@@ -380,6 +384,11 @@ enum DummySettingsRows {
         case kSettingSectionApp: {
             switch(indexPath.row) {
                     
+                case VeloAppearanceRow: {
+                    UIViewController* appearance = [[SwiftuiInterface new] makeViewWithName:@"VeloAppearance"];
+                    [self showDetailViewController:appearance sender:self];
+                    break;
+                }
                 case GeneralSettingsRow: {
                     UIViewController* privacyViewController = [[SwiftuiInterface new] makeViewWithName:@"GeneralSettings"];
                     [self showDetailViewController:privacyViewController sender:self];

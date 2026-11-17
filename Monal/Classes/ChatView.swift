@@ -117,6 +117,7 @@ struct ChatView: View {
     // The initial value must not be nil. Otherwise background image rendering won't work correctly.
     // The actual initialization happens in onAppear. It can safely be nil then.
     @State private var backgroundImage: UIImage? = UIImage(systemName: "circle")
+    @State private var veloPalette: VeloTheme.Palette = VeloTheme.current
     @State var messages: [ChatViewMessage] = []
     @State var queuedNewMessages: [ChatViewMessage] = []
     @State private var voiceRequests: [[String: AnyObject]] = []
@@ -327,11 +328,42 @@ struct ChatView: View {
 
     private func loadChatBackground() {
         var background: UIImage? = MLImageManager.sharedInstance().getBackgroundFor(self.contact.obj)
-        // Use the default background if this contact does not have its own
+        // VELO: senza uno sfondo per questo contatto vale quello di Aspetto (foto, disegno, sfumato o tinta unita)
         if background == nil {
-            background = MLImageManager.sharedInstance().getBackgroundFor(nil)
+            background = VeloTheme.currentChatBackground
         }
         self.backgroundImage = background
+        self.veloPalette = VeloTheme.current
+    }
+
+    //VELO: i colori della chat vengono dal tema (Aspetto / Personalizza)
+    private func veloChatColors() -> ChatTheme.Colors {
+        let p = veloPalette
+        let input = p.dark ? p.received : VeloRGB(0xFFFFFF)
+        return ChatTheme.Colors(
+            mainBG: p.wall.color,
+            mainTint: p.tintOnPage.color,
+            mainText: p.page.onColor.color,
+            mainCaptionText: p.page.onColor.color.opacity(0.6),
+            messageMyBG: p.sent.color,
+            messageMyText: p.onSent.color,
+            messageMyTimeText: p.onSent.color.opacity(0.6),
+            messageFriendBG: p.received.color,
+            messageFriendText: p.onReceived.color,
+            messageFriendTimeText: p.onReceived.color.opacity(0.6),
+            messageSystemBG: p.received.color.opacity(0.85),
+            messageSystemText: p.onReceived.color,
+            messageSystemTimeText: p.onReceived.color.opacity(0.6),
+            inputBG: input.color,
+            inputText: input.onColor.color,
+            inputPlaceholderText: input.onColor.color.opacity(0.45),
+            inputSignatureBG: input.color,
+            inputSignatureText: input.onColor.color,
+            inputSignaturePlaceholderText: input.onColor.color.opacity(0.45),
+            menuBG: p.page.color,
+            menuText: p.page.onColor.color,
+            sendButtonBackground: p.tintOnPage.color
+        )
     }
 
     private func sendChatState(isTyping: Bool) {
@@ -738,6 +770,7 @@ struct ChatView: View {
         }
         .chatTheme(
             ChatTheme(
+                colors: veloChatColors(),
                 images: self.backgroundImage != nil ?
                     .init(background: ChatTheme.Images.Background(Image(uiImage: self.backgroundImage!))) :
                     .init()
@@ -1108,6 +1141,9 @@ struct ChatView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name(kMonalBackgroundChanged)).receive(on: RunLoop.main)) { notification in
+            loadChatBackground()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: VeloTheme.changedNotification).receive(on: RunLoop.main)) { _ in
             loadChatBackground()
         }
         .onReceive(Publishers.Merge(

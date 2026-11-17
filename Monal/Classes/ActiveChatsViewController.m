@@ -343,6 +343,8 @@ static BOOL _dnssecWarningDisplayed;
     self.chatListTable.dataSource = self;
     
     self.view = self.chatListTable;
+    //VELO: il tema scelto in Aspetto ridisegna l'elenco
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(veloThemeChanged) name:@"VeloThemeChanged" object:nil];
     //VELO: storie (come la riga di cerchi sopra le chat della Velo Android)
     self.chatListTable.tableHeaderView = [VeloStoriesUI makeHeaderViewWithWidth:self.view.bounds.size.width];
     
@@ -655,6 +657,20 @@ static BOOL _dnssecWarningDisplayed;
 {
     DDLogDebug(@"active chats view will disappear");
     [super viewWillDisappear:animated];
+}
+
+-(void) veloThemeChanged
+{
+    self.chatListTable.backgroundColor = [VeloTheme pageColor];
+    [self.chatListTable reloadData];
+}
+
+//VELO: con la notte automatica il tema segue il telefono anche ad app aperta
+-(void) traitCollectionDidChange:(UITraitCollection*) previousTraitCollection
+{
+    [super traitCollectionDidChange:previousTraitCollection];
+    if(previousTraitCollection != nil && previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle)
+        [VeloTheme apply];
 }
 
 -(void) viewDidAppear:(BOOL) animated
