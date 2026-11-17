@@ -3539,10 +3539,27 @@ a=%@\r\n", mid, candidate];
     return [jid substringToIndex:at.location];
 }
 
+//VELO: porta SOCKS di Tor casuale per ogni installazione (un'altra app non la indovina a colpo sicuro)
++(NSString*) veloTorSocksPort
+{
+    static NSString* port = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSInteger stored = [[HelperTools defaultsDB] integerForKey:@"veloTorSocksPort"];
+        if(stored < 20000 || stored > 60999)
+        {
+            stored = 20000 + (NSInteger)arc4random_uniform(41000);
+            [[HelperTools defaultsDB] setInteger:stored forKey:@"veloTorSocksPort"];
+        }
+        port = [NSString stringWithFormat:@"%ld", (long)stored];
+    });
+    return port;
+}
+
 //VELO: proxy SOCKSv5 verso il Tor dentro l'app; senza ripiego sulla rete diretta (se Tor non c'e', non si esce)
 +(nw_proxy_config_t) veloTorProxy
 {
-    nw_endpoint_t endpoint = nw_endpoint_create_host(kVeloTorSocksHost, kVeloTorSocksPort);
+    nw_endpoint_t endpoint = nw_endpoint_create_host(kVeloTorSocksHost, [[HelperTools veloTorSocksPort] UTF8String]);
     nw_proxy_config_t proxy = nw_proxy_config_create_socksv5(endpoint);
     nw_proxy_config_set_failover_allowed(proxy, false);
     return proxy;
@@ -3560,7 +3577,7 @@ a=%@\r\n", mid, candidate];
     sessionConfig.connectionProxyDictionary = @{
         @"SOCKSEnable": @1,
         @"SOCKSProxy": @kVeloTorSocksHost,
-        @"SOCKSPort": @([@kVeloTorSocksPort intValue]),
+        @"SOCKSPort": @([[HelperTools veloTorSocksPort] intValue]),
     };
 }
 

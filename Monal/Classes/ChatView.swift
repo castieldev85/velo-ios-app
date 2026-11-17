@@ -637,6 +637,33 @@ struct ChatView: View {
         .setAvailableInputs([.text, .audio, .media, .file, .staticLocation])
         .autoFocusTextInputOnChatOpen(chatViewDefaultsDB.showKeyboardOnChatOpen)
         .showUsername(contact.isMuc)
+        //VELO: testi della chat in italiano
+        .localization(ChatLocalization(
+            inputPlaceholder: "Scrivi un messaggio…",
+            signatureText: "Aggiungi una didascalia…",
+            cancelButtonText: "Annulla",
+            recentToggleText: "Recenti",
+            waitingForNetwork: "In attesa della rete",
+            recordingText: "Registrazione…",
+            replyToText: "Rispondi a",
+            attachMediaText: "Foto e video",
+            attachFileText: "File",
+            attachGifText: "GIF",
+            attachCameraText: "Fotocamera",
+            attachLocationText: "Posizione",
+            missingLocationPermissionTitle: "Serve l'accesso alla posizione",
+            missingLocationPermissionText: "Velo non può leggere la posizione. Puoi permetterlo nelle impostazioni di privacy del telefono.",
+            sendLocationText: "Invia questa posizione",
+            shareLiveLocationText: "Condividi la posizione in tempo reale",
+            stopSharingLocationText: "Smetti di condividere",
+            liveLocationText: "Posizione in tempo reale",
+            liveLocationEndedText: "Posizione in tempo reale terminata",
+            liveLocationUpdatedJustNowText: "aggiornata adesso",
+            liveLocationUpdatedMinutesAgoFormat: "aggiornata %d min fa",
+            openInMapsText: "Apri in Mappe",
+            unknownSize: "Dimensione sconosciuta",
+            unknownFileType: "Tipo di file sconosciuto"
+        ))
         .tapAvatarClosure { user, _ in
             inputText += "\(user.name), "
         }

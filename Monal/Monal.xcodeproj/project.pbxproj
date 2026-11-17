@@ -13,6 +13,7 @@
 		20D3611C2C10E12500E46587 /* BoardingCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D3611B2C10E12500E46587 /* BoardingCards.swift */; };
 		20D8C65E2C3C37FE00E6BDA2 /* MediaGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D8C65D2C3C37FE00E6BDA2 /* MediaGallery.swift */; };
 		20ED55852BADDA5C0005783E /* GeneralSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20ED55842BADDA5C0005783E /* GeneralSettings.swift */; };
+		9A95DE72A0E0A02AC93E46DC /* VeloLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D9A3AA537B155B96C42CC4 /* VeloLock.swift */; };
 		2601D9CB0FBF25EF004DB939 /* sworim.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 2601D9CA0FBF25EF004DB939 /* sworim.sqlite */; };
 		260773C4232FC4E800BFD50F /* NotificationService.m in Sources */ = {isa = PBXBuildFile; fileRef = 260773C3232FC4E800BFD50F /* NotificationService.m */; };
 		2609B5291FD5B26800F09FA1 /* MLSplitViewDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2609B5281FD5B26800F09FA1 /* MLSplitViewDelegate.m */; };
@@ -388,6 +389,7 @@
 		20D3611B2C10E12500E46587 /* BoardingCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingCards.swift; sourceTree = "<group>"; };
 		20D8C65D2C3C37FE00E6BDA2 /* MediaGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaGallery.swift; sourceTree = "<group>"; };
 		20ED55842BADDA5C0005783E /* GeneralSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettings.swift; sourceTree = "<group>"; };
+		96D9A3AA537B155B96C42CC4 /* VeloLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeloLock.swift; sourceTree = "<group>"; };
 		213F5BFD4599EC9317B99E97 /* Pods-Monal.appstore-quicksy.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Monal.appstore-quicksy.xcconfig"; path = "Target Support Files/Pods-Monal/Pods-Monal.appstore-quicksy.xcconfig"; sourceTree = "<group>"; };
 		21E99538324C14220843F325 /* Pods-shareSheet.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shareSheet.debug.xcconfig"; path = "Target Support Files/Pods-shareSheet/Pods-shareSheet.debug.xcconfig"; sourceTree = "<group>"; };
 		222F09C97CFF93A2CF1007F3 /* Pods-MonalUITests.alpha-ios.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MonalUITests.alpha-ios.xcconfig"; path = "Target Support Files/Pods-MonalUITests/Pods-MonalUITests.alpha-ios.xcconfig"; sourceTree = "<group>"; };
@@ -1167,6 +1169,7 @@
 				E8CF9CC026249640001A1952 /* MLSettingsAboutViewController.m */,
 				8441EFF82921B53500E851E9 /* BackgroundSettings.swift */,
 				20ED55842BADDA5C0005783E /* GeneralSettings.swift */,
+				96D9A3AA537B155B96C42CC4 /* VeloLock.swift */,
 			);
 			name = Settings;
 			sourceTree = "<group>";
@@ -2373,6 +2376,7 @@
 				C1943A4C25309A9D0036172F /* MLReloadCell.m in Sources */,
 				262E51971AD8CB7200788351 /* MLTextInputCell.m in Sources */,
 				20ED55852BADDA5C0005783E /* GeneralSettings.swift in Sources */,
+				9A95DE72A0E0A02AC93E46DC /* VeloLock.swift in Sources */,
 				84E55E7D2964424E003E191A /* ActiveChatsViewController.m in Sources */,
 				C1E8A7F72B8E47C300760220 /* EditGroupSubject.swift in Sources */,
 				263DFAC32187D0E00038E716 /* MLLinkCell.m in Sources */,

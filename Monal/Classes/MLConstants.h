@@ -45,7 +45,6 @@ static const DDLogLevel ddLogLevel = LOG_LEVEL_STDOUT;
 
 //VELO: Tor dentro l'app e server del gruppo (come Config.java della Velo Android)
 #define kVeloTorSocksHost "127.0.0.1"
-#define kVeloTorSocksPort "39050"
 //valori reali messi dalla CI dai segreti del repository (mai nel codice)
 #define kVeloLoginDomain @"__VELO_LOGIN_DOMAIN__"
 #define kVeloOnionHost @"__VELO_ONION_HOST__"

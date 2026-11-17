@@ -222,6 +222,7 @@ NSDictionary* _Nullable dictionaryComprehension(NSDictionary* _Nullable dict, id
 +(BOOL) isIP:(NSString*) host;
 
 +(nw_proxy_config_t) veloTorProxy;
++(NSString*) veloTorSocksPort;
 //VELO: il dominio non si mostra mai (come VeloNames.of della Velo Android)
 +(NSString*) veloShortJid:(NSString* _Nullable) jid;
 +(void) veloApplyTorToSessionConfig:(NSURLSessionConfiguration*) sessionConfig;

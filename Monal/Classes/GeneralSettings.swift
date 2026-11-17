@@ -155,6 +155,16 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Section(header:Text("General Settings")) {
+                //VELO: blocco con PIN, antipanico, cancellazione automatica
+                NavigationLink(destination: LazyClosureView(VeloSecuritySettings())) {
+                    HStack{
+                        Image(systemName: "lock.shield.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: size20px, height: size20px)
+                        Text("Blocco e antipanico")
+                    }
+                }
                 NavigationLink(destination: LazyClosureView(UserInterfaceSettings())) {
                     HStack{
                         Image(systemName: "hand.tap.fill")

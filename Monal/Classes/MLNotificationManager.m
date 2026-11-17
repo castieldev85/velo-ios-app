@@ -67,7 +67,8 @@ typedef NS_ENUM(NSUInteger, MLNotificationState) {
 
 -(NotificationPrivacySettingOption) notificationPrivacySetting
 {
-    NotificationPrivacySettingOption value = (NotificationPrivacySettingOption)[[HelperTools defaultsDB] integerForKey:@"NotificationPrivacySetting"];
+    //VELO: le notifiche non mostrano mai il testo dei messaggi (come la Velo Android)
+    NotificationPrivacySettingOption value = NotificationPrivacySettingOptionDisplayOnlyName;
     DDLogVerbose(@"Current NotificationPrivacySettingOption: %d", (int)value);
     return value;
 }

@@ -29,7 +29,7 @@ static void veloStartTor(void)
         [[NSFileManager defaultManager] createDirectoryAtPath:dataDir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions: @0700} error:nil];
         NSArray<NSString*>* args = @[
             @"tor",
-            @"--SocksPort", [NSString stringWithFormat:@"%s:%s", kVeloTorSocksHost, kVeloTorSocksPort],
+            @"--SocksPort", [NSString stringWithFormat:@"%s:%@", kVeloTorSocksHost, [HelperTools veloTorSocksPort]],
             @"--DataDirectory", dataDir,
             @"--ClientOnly", @"1",
             @"--AvoidDiskWrites", @"1",
@@ -570,8 +570,18 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     }
 }
 
+-(void) applicationWillResignActive:(UIApplication*) application
+{
+    //VELO: copre il contenuto nell'elenco delle app
+    [[VeloLockController shared] appWillResignActive];
+}
+
 -(void) applicationDidBecomeActive:(UIApplication*) application
 {
+    //VELO: blocco col PIN, autodistruzione, protezione screenshot
+    [[VeloLockController shared] attachTo:self.window];
+    [[VeloLockController shared] appDidBecomeActive];
+    
     [self updateAppIconIfNeeded];
     
     if([[MLXMPPManager sharedInstance] connectedXMPP].count > 0)
@@ -1170,6 +1180,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
 
 -(void) applicationDidEnterBackground:(UIApplication*) application
 {
+    //VELO: al ritorno serve di nuovo il PIN
+    [[VeloLockController shared] appDidEnterBackground];
     UIApplicationState state = [application applicationState];
     if(state == UIApplicationStateInactive)
         DDLogInfo(@"Screen lock / incoming call");
