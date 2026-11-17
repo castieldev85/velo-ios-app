@@ -257,7 +257,8 @@ struct ChatView: View {
         if DataLayer.sharedInstance().isAccountEnabled(contact.accountID) {
             var omemoDeviceForContactFound = false
             if !contact.isMuc {
-                omemoDeviceForContactFound = account.omemo.knownDevices(forAddressName:contact.contactJid).count > 0
+                //VELO: valgono anche le chiavi post-quantistiche
+                omemoDeviceForContactFound = account.omemo.knownDevices(forAddressName:contact.contactJid).count > 0 || account.omemo.veloPQHasDevices(for:contact.contactJid)
             } else {
                 omemoDeviceForContactFound = false
                 for participant in DataLayer.sharedInstance().getMembersAndParticipants(ofMuc:contact.contactJid, forAccountID:contact.accountID) {
@@ -1036,7 +1037,8 @@ struct ChatView: View {
             if let xmppAccount = notification.object as? xmpp, let notificationJid = notification.userInfo?["jid"] as? String {
                 if xmppAccount.accountID == contact.accountID && notificationJid == contact.contactJid {
                     DDLogDebug("Got omemo fetching update: \(contact) --> \(String(describing:notification.userInfo))")
-                    if let _ = (notification.userInfo?["isFetching"] as? Bool) {
+                    //VELO: avviso solo a ricerche finite (vecchio OMEMO e PQ)
+                    if let isFetching = (notification.userInfo?["isFetching"] as? Bool), !isFetching {
                         //recheck support and show alert if needed
                         DDLogVerbose("Rechecking omemo support with alert, if needed...")
                         checkOmemoSupport(withAlert:true)

@@ -1726,6 +1726,8 @@ $$instance_handler(veloPQContactDevicelistResult, account.omemo, $$ID(xmpp*, acc
     }
     else
         DDLogWarn(@"VELO PQ: devicelist fetch of %@ failed: %@ / %@", jid, errorIq, errorReason);
+    //VELO: la chat ricontrolla le chiavi solo ora che anche l'elenco PQ e' arrivato
+    [self sendFetchUpdateNotificationForJid:jid];
 $$
 
 -(void) veloPQHandleDeviceList:(NSArray<NSNumber*>*) receivedIds forJid:(NSString*) jid
@@ -1987,7 +1989,11 @@ $$
 
 -(void) sendFetchUpdateNotificationForJid:(NSString*) jid
 {
-    BOOL isFetching = self.state.openBundleFetches[jid] != nil || [self.state.openDevicelistFetches containsObject:jid] || [self.state.openDevicelistSubscriptions containsObject:jid];
+    BOOL veloPQFetching = NO;
+    @synchronized(self.veloPQOpenFetches) {
+        veloPQFetching = [self.veloPQOpenFetches containsObject:jid];
+    }
+    BOOL isFetching = veloPQFetching || self.state.openBundleFetches[jid] != nil || [self.state.openDevicelistFetches containsObject:jid] || [self.state.openDevicelistSubscriptions containsObject:jid];
     [[MLNotificationQueue currentQueue] postNotificationName:kMonalOmemoFetchingStateUpdate object:self.account userInfo:@{
         @"jid": jid,
         @"isFetching": @(isFetching),
