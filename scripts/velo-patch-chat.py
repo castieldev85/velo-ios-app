@@ -9,6 +9,11 @@ par = list(root.glob("checkouts/*/Sources/ExyteChat/Views/ChatCustomizationParam
 if len(msg) != 1 or len(par) != 1:
     sys.exit("ExyteChat non trovato: %s %s" % (msg, par))
 
+# i sorgenti dei pacchetti arrivano in sola lettura
+import stat
+for f in (msg[0], par[0]):
+    f.chmod(f.stat().st_mode | stat.S_IWUSR)
+
 def patch(path, old, new):
     s = path.read_text(encoding="utf-8")
     if s.count(old) != 1:
