@@ -208,7 +208,7 @@ enum DummySettingsRows {
         self.plainActivated = [[settings objectForKey:kPlainActivated] boolValue];
         
         //overwrite account section heading in edit mode
-        self.sectionDictionary[@(kSettingSectionAccount)] = [NSString stringWithFormat:NSLocalizedString(@"Account (%@)", @""), self.jid];
+        self.sectionDictionary[@(kSettingSectionAccount)] = [NSString stringWithFormat:NSLocalizedString(@"Account (%@)", @""), [HelperTools veloShortJid:self.jid]];
     }
     else
     {
@@ -686,7 +686,11 @@ enum DummySettingsRows {
                 break;
             }
             case SettingsServerRow:  {
-                [thecell initCell:NSLocalizedString(@"Server", @"") withTextField:self.server andPlaceholder:NSLocalizedString(@"Optional Hardcoded Hostname", @"") andTag:4];
+                //VELO: l'indirizzo del server (onion) non si mostra
+                if(self.editMode)
+                    [thecell initCell:NSLocalizedString(@"Server", @"") withLabel:@"Velo (Tor)"];
+                else
+                    [thecell initCell:NSLocalizedString(@"Server", @"") withTextField:self.server andPlaceholder:NSLocalizedString(@"Optional Hardcoded Hostname", @"") andTag:4];
                 break;
             }
             case SettingsPortRow:  {

@@ -877,17 +877,17 @@ struct ChatView: View {
                                     Text(contact.contactDisplayName as String)
                                         .fontWeight(.semibold)
                                         .font(.headline)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(veloPalette.onBar.color)
                                     
                                     if (contact.isTyping as Bool) {
                                         Text("Typing...")
                                             .font(.footnote)
-                                            .foregroundColor(Color(hex: "AFB3B8"))
+                                            .foregroundColor(veloPalette.onBar.color.opacity(0.75))
                                     } else if let lastInteractionDate:Date = contact.lastInteractionTime {
                                         TimelineView(.periodic(from: lastInteractionDate, by: 60.0)) { _ in
                                             Text(HelperTools.formatLastInteraction(contact.lastInteractionTime))
                                                 .font(.footnote)
-                                                .foregroundColor(Color(hex: "AFB3B8"))
+                                                .foregroundColor(veloPalette.onBar.color.opacity(0.75))
                                         }
                                     }
                                 }
@@ -903,6 +903,7 @@ struct ChatView: View {
             
             ToolbarItemGroup(placement: .topBarTrailing) {
                 ProgressView()
+                    .tint(veloPalette.onBar.color)
                     .opacity(isLoadingMamHistory || isUploadingFile ? 1 : 0)
 
                 //VELO: orologio dei messaggi a tempo (vale per i messaggi nuovi di questa chat)
@@ -923,6 +924,7 @@ struct ChatView: View {
                         }
                     } label: {
                         Image(systemName: veloTimer > 0 ? "timer.circle.fill" : "timer")
+                            .foregroundColor(veloPalette.onBar.color)
                     }
                 }
 
@@ -932,7 +934,7 @@ struct ChatView: View {
                             Guarantee { $0(contact.obj.account?.mucProcessor.requestVoice(inMuc:contact.obj.contactJid)) }
                         }
                     } label: {
-                        Image(systemName: "lightbulb")
+                        Image(systemName: "lightbulb").foregroundColor(veloPalette.onBar.color)
                     }
                 }
                 
@@ -940,7 +942,7 @@ struct ChatView: View {
                     Button {
                         //TODO: open sheet with voice requests
                     } label: {
-                        Image(systemName: "questionmark.bubble")
+                        Image(systemName: "questionmark.bubble").foregroundColor(veloPalette.onBar.color)
                     }
                 }
                 
@@ -969,9 +971,9 @@ struct ChatView: View {
                         }
                     } label: {
                         if (voipProcessor.activeCalls as [MLCall]).contains(where:{ $0.isEqual(to:contact.obj) }) {
-                            Image(systemName: "phone.connection.fill")
+                            Image(systemName: "phone.connection.fill").foregroundColor(veloPalette.onBar.color)
                         } else {
-                            Image(systemName: "phone.fill")
+                            Image(systemName: "phone.fill").foregroundColor(veloPalette.onBar.color)
                         }
                     }
                 }
@@ -991,7 +993,7 @@ struct ChatView: View {
                         Label {
                             Text("Messages are encrypted")
                         } icon: {
-                            Image(systemName: "lock.fill")
+                            Image(systemName: "lock.fill").foregroundColor(veloPalette.onBar.color)
                         }
                     } else {
                         Label {

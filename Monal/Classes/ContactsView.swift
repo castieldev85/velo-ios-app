@@ -171,11 +171,13 @@ struct ContactsView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 NavigationLink(destination: CreateGroupMenu(delegate: SheetDismisserProtocol())) {
                     Image(systemName: "person.3.fill")
+                        .foregroundColor(VeloTheme.barItemColor)
                 }
                 .accessibilityLabel("Create contact group")
 
                 NavigationLink(destination: AddContactMenu(delegate: SheetDismisserProtocol(), dismissWithNewContact: dismissWithContact)) {
                     Image(systemName: "person.fill.badge.plus")
+                        .foregroundColor(VeloTheme.barItemColor)
                         .overlay { NumberlessBadge($contacts.requestCount) }
                 }
                 .accessibilityLabel(contacts.requestCount > 0 ? "Add contact (contact requests pending)" : "Add New Contact")

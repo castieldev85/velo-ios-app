@@ -674,6 +674,7 @@ struct AddTopLevelNavigation<Content: View>: View {
                                 }
                             }) {
                                 Image(systemName: "arrow.backward")
+                                    .foregroundColor(VeloTheme.barItemColor)
                             }
                             .keyboardShortcut(.escape, modifiers: [])
                         }

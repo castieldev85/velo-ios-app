@@ -441,7 +441,8 @@ enum VeloSVGPath {
     // MARK: Applicazione a tutta l'app
 
     @objc static func apply() {
-        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
+        // solo la finestra principale: le finestre del blocco e della copertura devono restare come sono
+        let windows = [(UIApplication.shared.delegate as? MonalAppDelegate)?.window].compactMap { $0 }
         let systemDark = UIScreen.main.traitCollection.userInterfaceStyle == .dark
         let p = palette(systemDark: systemDark)
 
@@ -475,7 +476,6 @@ enum VeloSVGPath {
         for window in windows {
             window.overrideUserInterfaceStyle = (autoNight && !handMade) ? .unspecified : (p.dark ? .dark : .light)
             window.tintColor = p.tintOnPage.ui
-            window.backgroundColor = p.page.ui
             if let root = window.rootViewController { restyle(root, bar: bar, tint: p.onBar.ui) }
         }
         NotificationCenter.default.post(name: changedNotification, object: nil)
@@ -569,6 +569,8 @@ enum VeloSVGPath {
     }
 
     @objc static var listLineCount: Int { listLines }
+    /// Colore delle icone nella barra in alto (le icone SwiftUI non seguono il colore della barra da sole).
+    static var barItemColor: Color { current.onBar.color }
     @objc static var tintColor: UIColor { current.tintOnPage.ui }
     @objc static var pageColor: UIColor { current.page.ui }
 }
