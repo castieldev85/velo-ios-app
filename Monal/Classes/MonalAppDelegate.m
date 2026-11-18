@@ -60,6 +60,19 @@ static void veloWakeTor(void)
     });
 }
 
+//VELO: usato quando iOS sveglia l'app in background (BGAppRefresh / BGProcessing): se eravamo sospesi da piu' di 20 s
+//risveglia Tor (che poi ricollega gli account) e riparte a contare, cosi' il prossimo risveglio lo rifa'
+static void veloWakeTorIfSuspended(void)
+{
+    if(veloBackgroundSince != nil && -[veloBackgroundSince timeIntervalSinceNow] > 20)
+    {
+        DDLogInfo(@"VELO: risveglio in background dopo %.0f s, risveglio Tor", -[veloBackgroundSince timeIntervalSinceNow]);
+        veloWakeTor();
+    }
+    if(veloBackgroundSince != nil)
+        veloBackgroundSince = [NSDate date];
+}
+
 static void veloStartTor(void)
 {
     static dispatch_once_t once;
@@ -1688,6 +1701,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
         _shutdownPending = NO;
     }
     //don't use *self* connectIfNecessary, because we don't need an additional UIKit bg task, this one is already a bg task
+    //VELO: svegliati da iOS in background dopo una sospensione: la porta di Tor e' morta, va risvegliata prima di collegarsi
+    veloWakeTorIfSuspended();
     [[MLXMPPManager sharedInstance] connectIfNecessary];
     
     //request another execution in BGFETCH_DEFAULT_INTERVAL seconds
@@ -1786,6 +1801,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
         _shutdownPending = NO;
     }
     //don't use *self* connectIfNecessary, because we don't need an additional UIKit bg task, this one is already a bg task
+    //VELO: svegliati da iOS in background dopo una sospensione: la porta di Tor e' morta, va risvegliata prima di collegarsi
+    veloWakeTorIfSuspended();
     [[MLXMPPManager sharedInstance] connectIfNecessary];
     
     //request another execution in BGFETCH_DEFAULT_INTERVAL seconds
