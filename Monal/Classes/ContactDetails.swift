@@ -99,7 +99,16 @@ struct ContactDetails: View {
         }
     }
 
+    //VELO: i contatti singoli hanno la pagina a specchio della Velo Android; gruppi, canali e il proprio profilo restano quelli di Monal
     var body: some View {
+        if !contact.isMuc && !contact.isSelf {
+            VeloContactDetails(delegate: delegate, contact: contact, account: account)
+        } else {
+            monalBody
+        }
+    }
+
+    var monalBody: some View {
         Form {
             Section {
                 VStack(spacing: 20) {
@@ -766,6 +775,241 @@ struct ContactDetails: View {
                     self.updateRoleAndAffiliation()
                 }
             }
+        }
+    }
+}
+
+// MARK: - VELO: Dettagli contatto a specchio della Velo Android (activity_contact_details)
+
+/// Riga con l'icona su un quadratino colorato, come le schede della Velo Android.
+struct VeloIconLabel: View {
+    let icon: String
+    let color: Color
+    let title: String
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(color))
+            if !title.isEmpty {
+                Text(title).foregroundColor(.primary)
+            }
+        }
+    }
+}
+
+struct VeloContactDetails: View {
+    @Environment(\.presentationMode) private var presentationMode
+    var delegate: SheetDismisserProtocol?
+    @ObservedObject var contact: ObservableKVOWrapper<MLContact>
+    let account: xmpp
+    @State private var timer = 0
+    @State private var showVerify = false
+    @State private var confirmClear = false
+    @State private var confirmBlock = false
+    @State private var confirmRemove = false
+    @State private var cannotBlock = false
+
+    private var jid: String { contact.obj.contactJid }
+
+    private func close() {
+        if let delegate {
+            delegate.dismiss()
+        } else {
+            presentationMode.wrappedValue.dismiss()
+        }
+    }
+
+    private var activeChats: ActiveChatsViewController? {
+        (UIApplication.shared.delegate as? MonalAppDelegate)?.activeChats
+    }
+
+    private var isOnline: Bool {
+        if let date = contact.lastInteractionTime as Date? {
+            return date.timeIntervalSince1970 == 0
+        }
+        return false
+    }
+
+    private var lastSeen: String? {
+        guard let date = contact.lastInteractionTime as Date?, date.timeIntervalSince1970 > 0 else { return nil }
+        return "Ultimo accesso: " + HelperTools.formatLastInteraction(date)
+    }
+
+    private var pqFingerprints: [String] {
+        account.omemo.veloPeerHybridFingerprints(for: jid).compactMap { $0["fingerprint"] as? String }
+    }
+
+    private func actionButton(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 18, weight: .semibold))
+                Text(title).font(.caption2)
+            }
+            .foregroundColor(.accentColor)
+            .frame(width: 72, height: 62)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(UIColor.secondarySystemGroupedBackground)))
+        }
+        .buttonStyle(.borderless)
+    }
+
+    var body: some View {
+        Form {
+            // testa: foto, nome, stato, pulsanti tondi
+            Section {
+                VStack(spacing: 12) {
+                    Image(uiImage: contact.avatar)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(Circle())
+                    Text(contact.contactDisplayName as String)
+                        .font(.title2)
+                        .multilineTextAlignment(.center)
+                    if isOnline {
+                        Text("Online")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color(red: 0.0, green: 0.48, blue: 0.24)))
+                    } else if let lastSeen {
+                        Text(lastSeen).font(.footnote).foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 8) {
+                        actionButton("message.fill", "Messaggio") {
+                            activeChats?.presentChat(with: contact.obj)
+                            close()
+                        }
+                        actionButton("phone.fill", "Chiama") {
+                            activeChats?.call(contact.obj, with: .audio)
+                        }
+                        actionButton("video.fill", "Video") {
+                            activeChats?.call(contact.obj, with: .video)
+                        }
+                        actionButton("lock.fill", "Verifica") {
+                            showVerify = true
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+            }
+            .listRowBackground(Color.clear)
+
+            Section(header: Text("Chat")) {
+                Toggle(isOn: Binding(get: { !(contact.isMuted as Bool) }, set: { contact.obj.toggleMute(!$0) })) {
+                    VeloIconLabel(icon: "bell.fill", color: .red, title: "Notifiche")
+                }
+                Picker(selection: Binding(get: { timer }, set: {
+                    timer = $0
+                    VeloMessageRules.setSendTimer($0, account: account.accountID, jid: jid)
+                })) {
+                    ForEach(VeloMessageRules.timerChoices, id: \.self) { seconds in
+                        Text(VeloMessageRules.timerLabel(seconds)).tag(seconds)
+                    }
+                } label: {
+                    VeloIconLabel(icon: "hourglass", color: .purple, title: "Messaggi a tempo")
+                }
+                Toggle(isOn: Binding(get: { contact.isPinned as Bool }, set: { contact.obj.togglePinnedChat($0) })) {
+                    VeloIconLabel(icon: "pin.fill", color: .orange, title: "Fissa in alto")
+                }
+                HStack(spacing: 12) {
+                    VeloIconLabel(icon: "pencil", color: .blue, title: "")
+                    TextField("Rinomina contatto", text: $contact.nickNameView)
+                }
+                NavigationLink(destination: LazyClosureView(BackgroundSettings(contact: contact))) {
+                    VeloIconLabel(icon: "photo.fill", color: .teal, title: "Sfondo della chat")
+                }
+                let sharedUrl = HelperTools.getSharedDocumentsURL(forPathComponents: [account.connectionProperties.identity.jid, contact.contactDisplayName as String])
+                if FileManager.default.fileExists(atPath: sharedUrl.path) {
+                    NavigationLink(destination: LazyClosureView { MediaGalleryView(contact: jid, accountID: contact.obj.accountID) }) {
+                        VeloIconLabel(icon: "photo.on.rectangle", color: .green, title: "Foto e video")
+                    }
+                }
+            }
+
+            Section(header: Text("Sicurezza"), footer: Text("Confronta il codice di sicurezza con il contatto (di persona o con una chiamata) per essere sicuro che nessuno si metta in mezzo.")) {
+                if pqFingerprints.isEmpty {
+                    Text("Nessuna chiave post-quantistica ricevuta finora.").foregroundColor(.secondary)
+                }
+                ForEach(pqFingerprints, id: \.self) { fingerprint in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(VeloVerifyView.grouped(fingerprint))
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                        Text("Impronta PQ OMEMO2").font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                Button {
+                    showVerify = true
+                } label: {
+                    VeloIconLabel(icon: "checkmark.shield.fill", color: .green, title: "Verifica contatto")
+                }
+            }
+
+            // in fondo, in rosso, come la scheda Archivia/Elimina della Android
+            Section {
+                Button("Svuota cronologia", role: .destructive) { confirmClear = true }
+                    .actionSheet(isPresented: $confirmClear) {
+                        ActionSheet(title: Text("Svuota cronologia"), message: Text("Cancellare tutti i messaggi di questa chat?"), buttons: [
+                            .cancel(Text("Annulla")),
+                            .destructive(Text("Solo su questo telefono")) { contact.obj.clearHistory() },
+                            .destructive(Text("Anche sul telefono del contatto")) {
+                                if !account.veloSendHistoryPurge(to: contact.obj) {
+                                    DDLogWarn("VELO: history purge not sent (contact without Velo PQ)")
+                                }
+                                contact.obj.clearHistory()
+                            },
+                        ])
+                    }
+                Button((contact.isBlocked as Bool) ? "Sblocca contatto" : "Blocca contatto", role: (contact.isBlocked as Bool) ? nil : .destructive) {
+                    if contact.isBlocked as Bool {
+                        cannotBlock = !contact.obj.toggleBlocked(false)
+                    } else {
+                        confirmBlock = true
+                    }
+                }
+                .actionSheet(isPresented: $confirmBlock) {
+                    ActionSheet(title: Text("Blocca contatto"), message: Text("Non riceverai più messaggi da questo contatto."), buttons: [
+                        .cancel(Text("Annulla")),
+                        .destructive(Text("Blocca")) { cannotBlock = !contact.obj.toggleBlocked(true) },
+                    ])
+                }
+                .alert(isPresented: $cannotBlock) {
+                    Alert(title: Text("Blocco non riuscito"), message: Text("Il server non permette di bloccare i contatti."), dismissButton: .default(Text("OK")))
+                }
+                if contact.isInRoster as Bool {
+                    Button("Elimina contatto", role: .destructive) { confirmRemove = true }
+                        .actionSheet(isPresented: $confirmRemove) {
+                            ActionSheet(title: Text("Eliminare \(contact.contactDisplayName as String) dai contatti?"), message: Text("Non vedrà più quando sei online e potrebbe non riuscire a mandarti messaggi cifrati."), buttons: [
+                                .cancel(Text("Annulla")),
+                                .destructive(Text("Elimina")) {
+                                    contact.obj.removeFromRoster()
+                                    close()
+                                },
+                            ])
+                        }
+                } else {
+                    Button("Aggiungi ai contatti") { contact.obj.addToRoster() }
+                }
+            }
+        }
+        .navigationBarTitle("Dettagli contatto", displayMode: .inline)
+        .sheet(isPresented: $showVerify) {
+            NavigationStack {
+                VeloVerifyView(contact: contact.obj)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Chiudi") { showVerify = false }
+                        }
+                    }
+            }
+        }
+        .onAppear {
+            timer = VeloMessageRules.sendTimer(account: account.accountID, jid: jid)
         }
     }
 }
