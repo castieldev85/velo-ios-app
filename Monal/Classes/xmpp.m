@@ -4986,7 +4986,10 @@ static NSRegularExpression* fastTokenRemovalRegex;
         //we can pipeline the disco requests and outgoing presence broadcast, though
         [self queryDisco];
         [self queryServerVersion];
-        [self purgeOfflineStorage];
+        //VELO: MAI cancellare i messaggi offline (XEP-0013 purge). Monal lo faceva perche' si affida all'archivio MAM,
+        //ma i server Velo non hanno MAM per scelta: i messaggi offline sono l'unica copia e il purge li buttava via
+        //(messaggi arrivati con l'iPhone scollegato da piu' di 5 minuti persi per sempre). Il server li toglie da solo alla consegna.
+        //[self purgeOfflineStorage];
         [self setMAMPrefs:@"always"];   //make sure we are able to do proper catchups
         [self sendPresence];            //this will trigger a replay of offline stanzas on prosody (no XEP-0013 support anymore 😡)
         //the offline messages will come in *after* we initialized the mam query, because the disco result comes in first
