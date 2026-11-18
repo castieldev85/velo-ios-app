@@ -21,7 +21,10 @@
 
 enum kSettingSection {
     kSettingSectionAccounts,
-    kSettingSectionApp,
+    //VELO: tre schede come le Impostazioni della Velo Android (Aspetto / Privacy, Sicurezza, Notifiche / Dati...)
+    kSettingSectionLook,
+    kSettingSectionMain,
+    kSettingSectionData,
     kSettingSectionSupport,
     kSettingSectionAbout,
     kSettingSectionCount
@@ -33,11 +36,24 @@ enum SettingsAccountRows {
     SettingsAccountRowsCnt
 };
 
-enum SettingsAppRows {
+enum SettingsLookRows {
     VeloAppearanceRow,
-    GeneralSettingsRow,
+    SettingsLookRowsCnt
+};
+
+enum SettingsMainRows {
+    VeloPrivacyRow,
+    VeloSecurityRow,
+    VeloNotificationsRow,
     SoundsRow,
-    SettingsAppRowsCnt
+    SettingsMainRowsCnt
+};
+
+enum SettingsDataRows {
+    VeloAttachmentsRow,
+    VeloDiagnosticsRow,
+    GeneralSettingsRow,
+    SettingsDataRowsCnt
 };
 
 enum SettingsSupportRow {
@@ -153,7 +169,9 @@ enum DummySettingsRows {
     switch(section)
     {
         case kSettingSectionAccounts: return [self getAccountNum] + SettingsAccountRowsCnt;
-        case kSettingSectionApp: return SettingsAppRowsCnt;
+        case kSettingSectionLook: return SettingsLookRowsCnt;
+        case kSettingSectionMain: return SettingsMainRowsCnt;
+        case kSettingSectionData: return SettingsDataRowsCnt;
         case kSettingSectionSupport: return 0;      //VELO: supporto, segnalazioni e FAQ portavano ai siti di Monal fuori da Tor
 #ifndef DEBUG
         case kSettingSectionAbout: return [[HelperTools defaultsDB] boolForKey:@"showLogInSettings"] ? SettingsAboutRowsWithLogCnt : SettingsAboutRowsCntORLogRow;
@@ -223,8 +241,73 @@ enum DummySettingsRows {
     }
 }
 
+//VELO: icona su quadratino colorato, come le schede della Velo Android
+-(UIImage*) veloIcon:(NSString*) symbol color:(UIColor*) color
+{
+    CGSize size = CGSizeMake(30, 30);
+    UIGraphicsImageRenderer* renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext* ctx __unused) {
+        [color setFill];
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:8] fill];
+        UIImageSymbolConfiguration* config = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+        UIImage* glyph = [[UIImage systemImageNamed:symbol withConfiguration:config] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if(glyph != nil)
+            [glyph drawInRect:CGRectMake((size.width - glyph.size.width) / 2, (size.height - glyph.size.height) / 2, glyph.size.width, glyph.size.height)];
+    }];
+}
+
+-(UITableViewCell*) veloCellTitle:(NSString*) title summary:(NSString*) summary symbol:(NSString*) symbol color:(UIColor*) color
+{
+    UITableViewCell* cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+    cell.textLabel.text = title;
+    cell.detailTextLabel.text = summary;
+    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+    cell.detailTextLabel.numberOfLines = 2;
+    cell.imageView.image = [self veloIcon:symbol color:color];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+-(UIColor*) veloRGB:(uint32_t) rgb
+{
+    return [UIColor colorWithRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:1.0];
+}
+
 -(UITableViewCell*) tableView:(UITableView*) tableView cellForRowAtIndexPath:(NSIndexPath*) indexPath
 {
+    switch((int)indexPath.section)
+    {
+        case kSettingSectionLook:
+            return [self veloCellTitle:@"Aspetto" summary:@"Tema, colori, sfondo delle chat, dimensione del testo" symbol:@"hand.tap.fill" color:[self veloRGB:0x7E57C2]];
+        case kSettingSectionMain:
+            switch(indexPath.row) {
+                case VeloPrivacyRow:
+                    return [self veloCellTitle:@"Privacy" summary:@"Conferme di lettura, sta scrivendo, ultimo accesso" symbol:@"info.circle.fill" color:[self veloRGB:0x1E88E5]];
+                case VeloSecurityRow:
+                    return [self veloCellTitle:@"Sicurezza" summary:@"Blocco dell'app, PIN antipanico, cancellazione automatica" symbol:@"checkmark.shield.fill" color:[self veloRGB:0x43A047]];
+                case VeloNotificationsRow:
+                    return [self veloCellTitle:@"Notifiche" summary:@"Cosa mostrano le notifiche" symbol:@"bell.fill" color:[self veloRGB:0xE53935]];
+                case SoundsRow:
+                    return [self veloCellTitle:@"Suoni" summary:@"Suono dei messaggi in arrivo" symbol:@"speaker.wave.2.fill" color:[self veloRGB:0xD81B60]];
+                default:
+                    unreachable();
+            }
+            break;
+        case kSettingSectionData:
+            switch(indexPath.row) {
+                case VeloAttachmentsRow:
+                    return [self veloCellTitle:@"Dati e media" summary:@"Download automatico, qualità di foto e video" symbol:@"paperclip" color:[self veloRGB:0xFB8C00]];
+                case VeloDiagnosticsRow:
+                    return [self veloCellTitle:@"Diagnostica connessione" summary:@"Stato di Tor e degli account" symbol:@"chevron.left.forwardslash.chevron.right" color:[self veloRGB:0x546E7A]];
+                case GeneralSettingsRow:
+                    return [self veloCellTitle:@"Impostazioni avanzate" summary:@"Tutte le altre opzioni" symbol:@"gearshape.fill" color:[self veloRGB:0x757575]];
+                default:
+                    unreachable();
+            }
+            break;
+        default:
+            break;
+    }
     MLSwitchCell* cell = [tableView dequeueReusableCellWithIdentifier:@"AccountCell" forIndexPath:indexPath];
     switch((int)indexPath.section)
     {
@@ -249,22 +332,6 @@ enum DummySettingsRows {
                     default:
                         unreachable();
                 }
-            }
-            break;
-        }
-        case kSettingSectionApp: {
-            switch(indexPath.row) {
-                case VeloAppearanceRow:
-                    [cell initTapCell:@"Aspetto"];
-                    break;
-                case GeneralSettingsRow:
-                    [cell initTapCell:NSLocalizedString(@"General Settings", @"")];
-                    break;
-                case SoundsRow:
-                    [cell initTapCell:NSLocalizedString(@"Sounds", @"")];
-                    break;
-                default:
-                    unreachable();
             }
             break;
         }
@@ -339,12 +406,14 @@ enum DummySettingsRows {
     switch(section) {
         case kSettingSectionAccounts:
             return nil;             //the account section does not need a heading (its the first one)
-        case kSettingSectionApp:
-            return NSLocalizedString(@"App", @"");
+        case kSettingSectionLook:
+        case kSettingSectionMain:
+        case kSettingSectionData:
+            return nil;             //VELO: schede senza titolo, come la Android
         case kSettingSectionSupport:
             return nil;
         case kSettingSectionAbout:
-            return NSLocalizedString(@"About", @"");
+            return @"Informazioni su Velo";
         default:
             unreachable();
     }
@@ -381,21 +450,40 @@ enum DummySettingsRows {
             }
             break;
         }
-        case kSettingSectionApp: {
+        case kSettingSectionLook: {
+            [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloAppearance"] sender:self];
+            break;
+        }
+        case kSettingSectionMain: {
             switch(indexPath.row) {
                     
-                case VeloAppearanceRow: {
-                    UIViewController* appearance = [[SwiftuiInterface new] makeViewWithName:@"VeloAppearance"];
-                    [self showDetailViewController:appearance sender:self];
+                case VeloPrivacyRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloPrivacy"] sender:self];
                     break;
-                }
-                case GeneralSettingsRow: {
-                    UIViewController* privacyViewController = [[SwiftuiInterface new] makeViewWithName:@"GeneralSettings"];
-                    [self showDetailViewController:privacyViewController sender:self];
+                case VeloSecurityRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloSecurity"] sender:self];
                     break;
-                }
+                case VeloNotificationsRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloNotifications"] sender:self];
+                    break;
                 case SoundsRow:
                     [self performSegueWithIdentifier:@"showSounds" sender:self];
+                    break;
+                default:
+                    unreachable();
+            }
+            break;
+        }
+        case kSettingSectionData: {
+            switch(indexPath.row) {
+                case VeloAttachmentsRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloAttachments"] sender:self];
+                    break;
+                case VeloDiagnosticsRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"VeloDiagnostics"] sender:self];
+                    break;
+                case GeneralSettingsRow:
+                    [self showDetailViewController:[[SwiftuiInterface new] makeViewWithName:@"GeneralSettings"] sender:self];
                     break;
                 default:
                     unreachable();

@@ -941,6 +941,17 @@ class SwiftuiInterface : NSObject {
                 host = UIHostingController(rootView:AnyView(ChatPlaceholder()))
             case "VeloAppearance":
                 host = UIHostingController(rootView:AnyView(UIKitWorkaround(VeloAppearanceView())))
+            //VELO: pagine della nuova pagina Impostazioni a schede (come la Velo Android)
+            case "VeloPrivacy":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(PrivacySettings())))
+            case "VeloSecurity":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(VeloSecuritySettings())))
+            case "VeloNotifications":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(NotificationSettings())))
+            case "VeloAttachments":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(AttachmentSettings())))
+            case "VeloDiagnostics":
+                host = UIHostingController(rootView:AnyView(UIKitWorkaround(VeloDiagnosticsView())))
             case "GeneralSettings" :
                 host = UIHostingController(rootView:AnyView(UIKitWorkaround(GeneralSettings())))
             case "ActiveChatsGeneralSettings":

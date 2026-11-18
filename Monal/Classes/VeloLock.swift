@@ -595,3 +595,55 @@ struct VeloKeepAliveSection: View {
         }
     }
 }
+
+// MARK: - Diagnostica connessione (come VeloDiagnosticsActivity della Android, in piccolo)
+
+struct VeloDiagnosticsView: View {
+    @ObservedObject var tor = VeloTorStatus.shared
+
+    private func accountRows() -> [(String, String, Bool)] {
+        let list = (MLXMPPManager.sharedInstance().connectedXMPP as? [xmpp]) ?? []
+        return list.map { account in
+            let bound = account.accountState.rawValue >= xmppState.stateBound.rawValue
+            let name = HelperTools.veloShortJid(account.connectionProperties.identity.jid)
+            return (name, bound ? "Collegato" : "Non collegato", bound)
+        }
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: Date(), by: 3)) { _ in
+            Form {
+                Section(header: Text("Tor"), footer: Text("Verde vuol dire che Tor ha i suoi circuiti e che gli account sono collegati: i messaggi passano davvero.")) {
+                    HStack(spacing: 10) {
+                        Circle().fill(tor.color).frame(width: 10, height: 10)
+                        Text(tor.description)
+                    }
+                }
+                Section(header: Text("Account")) {
+                    let rows = accountRows()
+                    if rows.isEmpty {
+                        Text("Nessun account attivo").foregroundColor(.secondary)
+                    }
+                    ForEach(rows, id: \.0) { row in
+                        HStack {
+                            Text(row.0)
+                            Spacer()
+                            Text(row.1).foregroundColor(row.2 ? .green : .orange)
+                        }
+                    }
+                }
+                Section(header: Text("In background")) {
+                    HStack {
+                        Text("Sempre collegata (prova)")
+                        Spacer()
+                        Text(VeloKeepAlive.isEnabled ? "Accesa" : "Spenta").foregroundColor(.secondary)
+                    }
+                }
+                Section(header: Text("Versione")) {
+                    Text(HelperTools.appBuildVersionInfo(for: .IQ)).font(.footnote).textSelection(.enabled)
+                }
+            }
+        }
+        .navigationBarTitle(Text("Diagnostica connessione"), displayMode: .inline)
+    }
+}
