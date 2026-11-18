@@ -1186,7 +1186,9 @@
                 [db executeNonQuery:@"DELETE FROM signalPreKey;"];
                 [db executeNonQuery:@"DELETE FROM signalSignedPreKey;"];
                 //update device id in db
-                [db executeNonQuery:@"UPDATE flags SET value=? WHERE name='device_id';" andArguments:@[current_id]];
+                //VELO: la riga puo' mancare (UPDATE non scriveva niente e ogni avvio a freddo cancellava sessione e chiavi OMEMO)
+                [db executeNonQuery:@"DELETE FROM flags WHERE name='device_id';"];
+                [db executeNonQuery:@"INSERT INTO flags (name, value) VALUES('device_id', ?);" andArguments:@[current_id]];
             }
             else
                 DDLogInfo(@"Device id not changed: %@", current_id);
