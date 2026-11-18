@@ -14,12 +14,51 @@
 #import <monalxmpp/MLConstants.h>
 #import <monalxmpp/HelperTools.h>
 #import "MLNotificationManager.h"
+#import <monalxmpp/MLXMPPManager.h>
 
 //VELO: Tor dentro l'app (tor.xcframework di iCepa, tor 0.4.9). API C di tor_api.h, dichiarata qui per non toccare gli header.
 typedef struct tor_main_configuration_t tor_main_configuration_t;
 extern tor_main_configuration_t* tor_main_configuration_new(void);
 extern int tor_main_configuration_set_command_line(tor_main_configuration_t* cfg, int argc, char* argv[]);
 extern int tor_run_main(const tor_main_configuration_t* cfg);
+extern int tor_main_configuration_setup_control_socket(tor_main_configuration_t* cfg);
+
+//VELO: canale di comando privato verso Tor (socketpair, iOS non lo chiude quando sospende l'app)
+static int veloTorControlFd = -1;
+static NSDate* veloBackgroundSince = nil;
+
+static void veloReadTorReplies(int fd)
+{
+    NSThread* reader = [[NSThread alloc] initWithBlock:^{
+        char buf[512];
+        ssize_t n;
+        while((n = read(fd, buf, sizeof(buf) - 1)) > 0)
+        {
+            buf[n] = 0;
+            DDLogInfo(@"VELO: tor risponde: %s", buf);
+        }
+        DDLogError(@"VELO: canale di comando di tor chiuso");
+    }];
+    reader.name = @"velo-tor-control";
+    [reader start];
+}
+
+//VELO: dopo la sospensione la porta SOCKS e i collegamenti di Tor sono morti (iOS si riprende i socket):
+//spegniamo e riaccendiamo la rete di Tor, che riapre la porta e ricostruisce i circuiti, poi ricolleghiamo gli account
+static void veloWakeTor(void)
+{
+    int fd = veloTorControlFd;
+    if(fd < 0)
+        return;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        const char* cmd = "SETCONF DisableNetwork=1\r\nSETCONF DisableNetwork=0\r\nSIGNAL ACTIVE\r\n";
+        ssize_t n = write(fd, cmd, strlen(cmd));
+        DDLogInfo(@"VELO: tor risvegliato dopo il background (scritti %zd byte)", n);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[MLXMPPManager sharedInstance] reconnectAll];
+        });
+    });
+}
 
 static void veloStartTor(void)
 {
@@ -42,6 +81,14 @@ static void veloStartTor(void)
                 argv[i] = strdup(args[i].UTF8String);
             tor_main_configuration_t* cfg = tor_main_configuration_new();
             tor_main_configuration_set_command_line(cfg, argc, argv);
+            int ctl = tor_main_configuration_setup_control_socket(cfg);
+            if(ctl >= 0)
+            {
+                veloTorControlFd = ctl;
+                veloReadTorReplies(ctl);
+            }
+            else
+                DDLogError(@"VELO: canale di comando di tor non disponibile");
             int result = tor_run_main(cfg);
             DDLogError(@"VELO: tor terminato con codice %d", result);
         }];
@@ -1151,7 +1198,12 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     
     [self addBackgroundTask];
     [[MLXMPPManager sharedInstance] nowForegrounded];           //NOTE: this will unfreeze all queues in our accounts
-    
+
+    //VELO: se siamo stati sospesi abbastanza da perdere i socket, risvegliamo Tor
+    if(veloBackgroundSince != nil && -[veloBackgroundSince timeIntervalSinceNow] > 20)
+        veloWakeTor();
+    veloBackgroundSince = nil;
+
     //make sure we call the NSURLSession callback that was delayed by app freeze
     [self handleFiletransferEventsFinished];
     
@@ -1186,6 +1238,7 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
 {
     //VELO: al ritorno serve di nuovo il PIN
     [[VeloLockController shared] appDidEnterBackground];
+    veloBackgroundSince = [NSDate date];
     UIApplicationState state = [application applicationState];
     if(state == UIApplicationStateInactive)
         DDLogInfo(@"Screen lock / incoming call");
