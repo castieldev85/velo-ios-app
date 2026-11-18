@@ -26,6 +26,8 @@ extern int tor_main_configuration_setup_control_socket(tor_main_configuration_t*
 //VELO: canale di comando privato verso Tor (socketpair, iOS non lo chiude quando sospende l'app)
 static int veloTorControlFd = -1;
 static NSDate* veloBackgroundSince = nil;
+//VELO: stato dei circuiti di Tor per l'icona (1 pronti, 0 no, -1 sconosciuto, -2 Tor fermo)
+static volatile int veloTorCircuitState = -1;
 
 static void veloReadTorReplies(int fd)
 {
@@ -35,8 +37,17 @@ static void veloReadTorReplies(int fd)
         while((n = read(fd, buf, sizeof(buf) - 1)) > 0)
         {
             buf[n] = 0;
-            DDLogInfo(@"VELO: tor risponde: %s", buf);
+            //risposta alla domanda periodica dell'icona: niente log, solo lo stato
+            if(strstr(buf, "status/circuit-established=1") != NULL)
+                veloTorCircuitState = 1;
+            else if(strstr(buf, "status/circuit-established=0") != NULL)
+                veloTorCircuitState = 0;
+            else if(strcmp(buf, "250 OK\r\n") == 0)
+                ;       //coda della risposta GETINFO arrivata da sola: non riempire il log ogni 3 secondi
+            else
+                DDLogInfo(@"VELO: tor risponde: %s", buf);
         }
+        veloTorCircuitState = -2;
         DDLogError(@"VELO: canale di comando di tor chiuso");
     }];
     reader.name = @"velo-tor-control";
@@ -245,6 +256,27 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     }];
 }
 
+//VELO: chiede a Tor se ha i circuiti e guarda se gli account sono collegati; il risultato va all'icona
+-(void) veloTorStatusTick
+{
+    int fd = veloTorControlFd;
+    if(fd >= 0)
+    {
+        const char* q = "GETINFO status/circuit-established\r\n";
+        if(write(fd, q, strlen(q)) < 0)
+            veloTorCircuitState = -2;
+    }
+    BOOL anyAccount = NO;
+    BOOL allBound = YES;
+    for(xmpp* account in [[MLXMPPManager sharedInstance].connectedXMPP copy])
+    {
+        anyAccount = YES;
+        if(account.accountState < kStateBound)
+            allBound = NO;
+    }
+    [VeloTorStatus.shared updateWithTor:veloTorCircuitState accountsOnline:(anyAccount && allBound)];
+}
+
 #pragma mark - app life cycle
 
 -(BOOL) application:(UIApplication*) application willFinishLaunchingWithOptions:(NSDictionary*) launchOptions
@@ -256,6 +288,10 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     
     //VELO: Tor parte per primo, prima di qualsiasi collegamento
     veloStartTor();
+    //VELO: icona di Tor, aggiornata ogni 3 secondi come sulla Android
+    [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer* timer __unused) {
+        [self veloTorStatusTick];
+    }];
     //VELO: cancella i messaggi a tempo scaduti
     [VeloMessageRules startSweeper];
     

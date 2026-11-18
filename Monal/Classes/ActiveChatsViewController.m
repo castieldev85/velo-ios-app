@@ -680,6 +680,8 @@ static BOOL _dnssecWarningDisplayed;
     [self refresh];
     //VELO: al primo avvio dopo un aggiornamento la barra delle storie poteva restare invisibile
     [VeloStoriesUI attachHeaderTo:self.chatListTable parent:self];
+    //VELO: titolo "Velo" con la pillola di Tor, come la home della Android
+    [VeloTorUI attachHomeTitleTo:self];
 }
 
 -(void) sheetDismissed

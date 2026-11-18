@@ -130,6 +130,8 @@ struct ChatView: View {
     @State private var typingTimer: Timer?
     //VELO: orologio dei messaggi di questa chat e foto/video a visualizzazione singola
     @State private var veloTimer = 0
+    //VELO: stato di Tor per il pallino sotto il nome
+    @ObservedObject private var veloTorStatus = VeloTorStatus.shared
     //VELO: nil = spenta, altrimenti i secondi della visualizzazione singola per le prossime foto/video
     @State private var veloViewOnceArmed: Int? = nil
     @State private var veloViewOnce: VeloViewOnceItem?
@@ -898,15 +900,21 @@ struct ChatView: View {
                                         .foregroundColor(veloPalette.onBar.color)
                                     
                                     if (contact.isTyping as Bool) {
-                                        Text("Typing...")
+                                        Text("Sta scrivendo…")
                                             .font(.footnote)
                                             .foregroundColor(veloPalette.onBar.color.opacity(0.75))
-                                    } else if let lastInteractionDate:Date = contact.lastInteractionTime {
-                                        TimelineView(.periodic(from: lastInteractionDate, by: 60.0)) { _ in
-                                            Text(HelperTools.formatLastInteraction(contact.lastInteractionTime))
-                                                .font(.footnote)
-                                                .foregroundColor(veloPalette.onBar.color.opacity(0.75))
+                                    } else {
+                                        //VELO: sotto il nome "● Tor · Cifrata post-quantistica", come la Velo Android
+                                        HStack(spacing: 4) {
+                                            Circle().fill(veloTorStatus.color).frame(width: 7, height: 7)
+                                            Text("Tor").fontWeight(.semibold)
+                                            if !contact.isMuc && account.omemo.veloPQHasDevices(for: contact.obj.contactJid) {
+                                                Text("· Cifrata post-quantistica")
+                                            }
                                         }
+                                        .font(.footnote)
+                                        .lineLimit(1)
+                                        .foregroundColor(veloPalette.onBar.color.opacity(0.85))
                                     }
                                 }
                             }

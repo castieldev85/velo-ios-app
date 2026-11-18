@@ -932,3 +932,108 @@ struct VeloCustomizeView: View {
         }
     }
 }
+
+// MARK: - Icona di Tor (come VeloTorStatus della Velo Android)
+
+/// Verde solo se Tor ha i circuiti E gli account sono collegati (i messaggi passano davvero),
+/// arancione mentre si collega, rosso se Tor si e' fermato. Aggiornato ogni 3 s da MonalAppDelegate.
+@objc final class VeloTorStatus: NSObject, ObservableObject {
+    @objc static let shared = VeloTorStatus()
+    enum State { case connected, connecting, problem }
+    @Published private(set) var state: State = .connecting
+
+    /// tor: 1 circuiti pronti, 0 non ancora, -1 sconosciuto, -2 Tor fermo
+    @objc(updateWithTor:accountsOnline:) func update(tor: Int, accountsOnline: Bool) {
+        let s: State = tor == -2 ? .problem : ((tor == 1 && accountsOnline) ? .connected : .connecting)
+        if Thread.isMainThread {
+            if s != state { state = s }
+        } else {
+            DispatchQueue.main.async { if s != self.state { self.state = s } }
+        }
+    }
+
+    /// Colori della Android (2E9E4F, E09000, D93025) schiariti del 45% verso il bianco, per leggersi sulla barra.
+    var color: Color {
+        let base: (Double, Double, Double)
+        switch state {
+        case .connected: base = (0x2E, 0x9E, 0x4F)
+        case .connecting: base = (0xE0, 0x90, 0x00)
+        case .problem: base = (0xD9, 0x30, 0x25)
+        }
+        func mix(_ c: Double) -> Double { (c + (255 - c) * 0.45) / 255 }
+        return Color(red: mix(base.0), green: mix(base.1), blue: mix(base.2))
+    }
+
+    var description: String {
+        switch state {
+        case .connected: return "Collegata tramite Tor"
+        case .connecting: return "Collegamento a Tor in corso…"
+        case .problem: return "Tor non funziona"
+        }
+    }
+}
+
+/// La pillola "● Tor" accanto al titolo; toccandola mostra per 3 secondi cosa vuol dire.
+struct VeloTorPill: View {
+    @ObservedObject var status = VeloTorStatus.shared
+    @State private var explain = false
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(status.color).frame(width: 8, height: 8)
+            Text(explain ? status.description : "Tor")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundColor(VeloTheme.barItemColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(VeloTheme.barItemColor.opacity(0.18)))
+        .onTapGesture {
+            explain = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { explain = false }
+        }
+        .accessibilityLabel(status.description)
+    }
+}
+
+/// Titolo della lista chat: "Velo" + pillola di Tor, come la home della Android.
+struct VeloHomeTitle: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Velo").font(.title3.weight(.bold)).foregroundColor(VeloTheme.barItemColor)
+            VeloTorPill()
+        }
+    }
+}
+
+@objc class VeloTorUI: NSObject {
+    @objc static func attachHomeTitle(to vc: UIViewController) {
+        if vc.navigationItem.titleView is VeloHomeTitleHost { return }
+        let host = UIHostingController(rootView: VeloHomeTitle())
+        host.view.backgroundColor = .clear
+        host.sizingOptions = .intrinsicContentSize
+        vc.addChild(host)
+        let wrapper = VeloHomeTitleHost(host: host)
+        vc.navigationItem.titleView = wrapper
+        host.didMove(toParent: vc)
+    }
+}
+
+/// Contenitore che tiene vivo il controller SwiftUI del titolo finche' il titolo e' mostrato.
+final class VeloHomeTitleHost: UIView {
+    let host: UIHostingController<VeloHomeTitle>
+    init(host: UIHostingController<VeloHomeTitle>) {
+        self.host = host
+        super.init(frame: .zero)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) non usato") }
+    override var intrinsicContentSize: CGSize { host.view.intrinsicContentSize }
+}
