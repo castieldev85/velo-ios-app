@@ -1,73 +1,89 @@
-# Monal for XMPP
-## A cross platform, modern XMPP client for iOS and macOS
-[![Alpha build status](https://github.com/monal-im/Monal/actions/workflows/develop-push.yml/badge.svg)](https://github.com/monal-im/Monal/actions/workflows/develop-push.yml)
-[![Translation status](https://hosted.weblate.org/widgets/monal/-/svg-badge.svg)](https://hosted.weblate.org/engage/monal/?utm_source=widget)
+# Velo per iPhone
 
-This is the Monal XMPP client as found in the app store. 
-If you want to  use the latest stable versions, search for Monal in the iOS or OSX app store.
-[Visit the blog to read about the development](https://monal-im.org/post)!
+**Chat private, cifrate, solo tra voi: la versione iOS di [Velo](https://velochat.eu).**
+Parla con la [Velo per Android](https://github.com/castieldev85/velo-android) usando la stessa
+cifratura post-quantistica e lo stesso Tor incorporato.
 
-## Releases
-|        | iOS                                                           | macOS                                                    | macOS (homebrew)                                                          |
-|--------|---------------------------------------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------|
-| Stable | [App Store](https://apps.apple.com/app/id317711500)           | [App Store](https://apps.apple.com/app/id1499227291)     | brew install --cask monal                                                 |
-| Beta   | [Testflight](https://testflight.apple.com/join/lLLlgHpB)      | [Testflight](https://testflight.apple.com/join/tGH2m5vf) | brew install --cask monal@beta                                            |
-| Alpha  | upon request to [info@monal-im.org](mailto:info@monal-im.org)<br>Then download from our [alpha download site](https://downloads.monal-im.org/monal-im/alpha/) |                                                          | brew tap monal-im/homebrew-monal-alpha<br>brew trust --cask monal-im/monal-alpha/monal-alpha<br>brew install --cask monal-alpha |
+[English below](#velo-for-iphone-english)
 
+> **Stato: in sviluppo.** Non è ancora sull'App Store e non ci sono versioni pronte da scaricare.
+> Il codice è pubblico per trasparenza e per la licenza AGPL.
 
-## Support Chat (MUC) and Wiki
+## Cosa fa già
 
-You can join this public chat (MUC) via XMPP, please stick to our [Code of Conduct](CODE_OF_CONDUCT.md): [monal@chat.yax.im](xmpp:monal@chat.yax.im?join)
+- **Tor dentro l'app.** I messaggi viaggiano solo dentro Tor verso il server `.onion` del gruppo,
+  senza nessuna richiesta DNS fuori da Tor.
+- **OMEMO2 post-quantistico** (scambio di chiavi ibrido classico + ML-KEM-1024, libsignal),
+  compatibile con la Velo per Android; codice di verifica dei contatti uguale a quello Android.
+- **Messaggi:** messaggi a tempo, foto e video a visualizzazione singola (invio e ricezione),
+  elimina per tutti, svuota la cronologia anche sul telefono dell'altro, storie di 24 ore.
+- **Sicurezza del telefono:** PIN di sblocco, PIN antipanico, cancellazione automatica, contenuto
+  escluso dagli screenshot, copertura nell'elenco delle app, notifiche senza testo, cancellazione a
+  distanza su comando dell'amministratore del gruppo.
+- **Interfaccia di Velo:** temi e personalizzazione come su Android, stato di Tor sempre visibile,
+  dettagli dei contatti e impostazioni nello stile Velo.
 
-Find general information in the [Monal Wiki](https://github.com/monal-im/Monal/wiki).
+Su iPhone le notifiche push richiedono un account sviluppatore Apple: per ora Velo usa
+l'aggiornamento in background di iOS e, in prova, un'opzione "Sempre collegata".
 
-[Reporting security issues](SECURITY.md)
+## Compilare
 
-## Donations and Support
+La compilazione gira su GitHub Actions (runner macOS con Xcode recente): `build-libsignal-ios.yml`
+prepara libsignal per iPhone, `build-ios.yml` produce un IPA non firmato. Gli indirizzi del server
+non sono nel codice: il workflow li prende dai segreti del repository `VELO_LOGIN_DOMAIN`,
+`VELO_ONION_HOST`, `VELO_BUNDLE_ID`, e cifra l'IPA con `IPA_PASSPHRASE` (un repository pubblico
+mostra a tutti gli artifact). L'IPA si installa firmandolo, per esempio con Sideloadly.
+Requisiti: iOS 17 o più recente.
 
-Monal is developed by volunteers and community collaboration. The work which has been done is usually not paid and the developers ask for donations to keep up service costs and development in the future! Please consider to give a little bit back for the hard work which has been conducted. Currently there are three ways for financial support of the Monal development:
+## Licenza e origine
 
-- Donate via [GitHub Sponsors](https://github.com/sponsors/tmolitor-stud-tu)
-- Donate via [Libera Pay](https://liberapay.com/tmolitor)
-- EU citizens can donate via SEPA, too. IBAN: DE66 5007 0371 0856 0419 01
+Velo per iPhone è un fork di [Monal](https://github.com/monal-im/Monal) (BSD 2-Clause, vedi
+`LICENSE`), a cui va il nostro grazie. Velo aggiunge
+[libsignal](https://github.com/signalapp/libsignal) (fork
+[pq-omemo-2](https://codeberg.org/monocles/pq-omemo-2), AGPLv3), Tor
+([Tor.framework di iCepa](https://github.com/iCepa/Tor.framework)) e il proprio codice: l'app nel suo
+insieme è distribuita sotto **GNU AGPLv3** (vedi `LICENSE-AGPL-3.0.txt`). Velo non è collegata al
+progetto Monal: per problemi di Velo non contattare gli sviluppatori di Monal, apri una Issue qui.
 
-Here you can read about further [support of the development](https://github.com/monal-im/Monal/issues/363)!
+## Come è fatta
 
-### Translations
+Velo è sviluppata da una persona con l'aiuto di un assistente di intelligenza artificiale
+(Claude di Anthropic), che scrive gran parte del codice. Ogni versione viene provata su un iPhone vero,
+e il codice è pubblico proprio perché chiunque possa controllarlo. Velo non ha ancora avuto una
+revisione di sicurezza indipendente; per le vulnerabilità vedi [SECURITY.md](SECURITY.md).
 
-Translations of the app itself as well as the appstore description and even the changelog displayed inside the appstore
-are hosted and managed via [Weblate](https://hosted.weblate.org/engage/monal/).
-Feel free to translate Monal to your language!  
+Niente screenshot per ora: Velo per iPhone esclude di proposito il proprio contenuto dalle catture
+dello schermo. Le schermate della versione Android sono nel
+[suo repository](https://github.com/castieldev85/velo-android).
 
-[![Detailed translation status](https://hosted.weblate.org/widgets/monal/-/multi-auto.svg)](https://hosted.weblate.org/engage/monal/?utm_source=widget)
+---
 
-### Platform information
+# Velo for iPhone (English)
 
-Monal always supports the two latest major releases of macOS and iOS.
+**Private chats, encrypted, just between you: the iOS version of [Velo](https://velochat.eu).**
+It talks to [Velo for Android](https://github.com/castieldev85/velo-android) with the same
+post-quantum encryption and the same built-in Tor.
 
-### Supported XEPs
+> **Status: in development.** Not on the App Store yet and no ready-made builds to download.
 
-Take a look at this list to get information on [supported XEPs by Monal](https://monal-im.org/install/#implemented-xeps).
+**Already working:** Tor inside the app (messages only through Tor to the group's `.onion` server, no
+DNS outside Tor); OMEMO2 with hybrid classical + ML-KEM-1024 key exchange, compatible with Velo for
+Android, same contact verification code; disappearing messages, view-once photos and videos, delete
+for everyone, clear history on both phones, 24-hour stories; app lock PIN, panic PIN, automatic wipe,
+screenshot protection, content-free notifications, remote wipe by the group admin; Velo themes, Tor
+status, Velo-style contact details and settings.
 
-### iOS Screenshots
-<p float="left">
-<img src ="https://github.com/monal-im/Monal/raw/develop/Art/screenshots/02_chats.png" width=250 >
-<img src="https://github.com/monal-im/Monal/raw/develop/Art/screenshots/01_groupchats.png" width="250">
-<img src="https://github.com/monal-im/Monal/raw/develop/Art/screenshots/04_contacts.png" width="250">
-</p>
+**Build:** GitHub Actions (`build-libsignal-ios.yml`, then `build-ios.yml`) produce an unsigned IPA.
+Server addresses are not in the code: they come from the repository secrets `VELO_LOGIN_DOMAIN`,
+`VELO_ONION_HOST`, `VELO_BUNDLE_ID`, and the IPA artifact is encrypted with `IPA_PASSPHRASE`. iOS 17+.
 
-### iPad (and macOS) Screenshot
+**License:** a fork of [Monal](https://github.com/monal-im/Monal) (BSD 2-Clause, see `LICENSE`), with
+libsignal (AGPLv3), Tor.framework and Velo's own code; the app as a whole is distributed under the
+**GNU AGPLv3** (see `LICENSE-AGPL-3.0.txt`). Velo is not affiliated with the Monal project: please
+report Velo issues here, not to the Monal developers.
 
-<img src="https://github.com/monal-im/Monal/raw/develop/Art/screenshots/ipad_01_groupchats.png" width="500">
-
-### License
-Monal is licensed under the BSD license. Any code contributions should be compatible with that license.  ** NO GPL ** .  By contributing to this project, you agree that your code is not GPL or any similarly restrictive license. You agree that your code can be used to publish in App stores such as Apple's that use DRM.
-
-### Pull Requests
-We take pull requests. Please use the develop branch to make changes and stick to our [Code of Conduct](CODE_OF_CONDUCT.md). Please take a look at:
-
-- [Building Monal](https://github.com/monal-im/Monal/wiki/Building-Monal)
-- [Issues with a Help wanted label](https://github.com/monal-im/Monal/issues?q=is%3Aissue+is%3Aopen+label%3A%22%3Asuperhero%3A+Help+wanted%22)
-- [Support Monal](https://github.com/monal-im/Monal/issues/363)
-
-Monal is licensed under the BSD license. Any code contributions should be compatible with that license.  ** NO GPL ** .  By contributing to this project, you agree that your code is not GPL or any similarly restrictive license. You agree that your code can be used to publish in App stores such as Apple's that use DRM.
+**How it is made:** Velo is developed by one person with the help of an AI assistant (Anthropic's
+Claude), which writes much of the code. Every version is tested on a real iPhone, and the code is
+public so that anyone can review it. No independent security audit yet; for vulnerabilities see
+[SECURITY.md](SECURITY.md). No screenshots for now: Velo for iPhone deliberately hides its content
+from screen captures (Android screenshots are in its repository).

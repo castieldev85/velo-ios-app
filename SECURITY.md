@@ -1,21 +1,16 @@
-# Security Policy
+# Sicurezza / Security policy
 
-## Reporting a Vulnerability
+**Italiano.** Se trovi una vulnerabilità in Velo, non pubblicarla in una Issue: usa la segnalazione
+privata di GitHub (scheda **Security → Report a vulnerability** di questo repository). Descrivi cosa
+ti preoccupa e, se puoi, come riprodurlo. Rispondiamo il prima possibile e ti chiediamo di non
+renderla pubblica finché non è corretta. Velo non ha ancora avuto una revisione di sicurezza
+indipendente: ogni controllo è benvenuto.
 
-It is highly appreciated to report a vulnerability to the Monal developers. We kindly ask you to not
-disclose it until it has been fixed. This prevents abuse and exploitation in the current published releases.
+**English.** If you find a vulnerability in Velo, please do not open a public issue: use GitHub's
+private reporting (**Security → Report a vulnerability** tab of this repository). Describe your
+concern and, if possible, how to reproduce it. We will answer as soon as we can and ask you not to
+disclose it until it is fixed. Velo has not had an independent security audit yet; every review is
+welcome.
 
-Please report issues directly via mail to info@monal-im.org.
-
-Please try to report in detail:
-- what you are concerned about
-- if applicable, how to reproduce
-- your contact details, if the sending email is not enough. That way we can ask questions back to you. 
-
-You are also invited to make a recommendation on how to fix a potential security vulnerability.
-
-Once a vulnerability has been reported and confirmed we try our very best to provide a fix as soon as possible,
-at its best within days. However, depending on the potential issue it can take longer if many code sections need to be changed.
-Please keep in mind that this is a non-commercial software project run by volunteers.
-
-Thank you for considering to report a security vulnerability. This improves the quality of the app significantly.
+Velo is not affiliated with Monal, Conversations or monocles: please report Velo issues here, not to
+those projects.
