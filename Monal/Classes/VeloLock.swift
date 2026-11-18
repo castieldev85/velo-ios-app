@@ -6,6 +6,7 @@
 //  - contenuto escluso dagli screenshot (contenitore "secure" di UIKit)
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import AVFoundation
 import CommonCrypto
 import Foundation
 import Security
@@ -439,6 +440,7 @@ struct VeloSecuritySettings: View {
                     .onChange(of: autoWipe) { VeloAutoWipe.days = autoWipe }
                 }
             }
+            VeloKeepAliveSection()
         }
         .navigationBarTitle(Text("Blocco e antipanico"), displayMode: .inline)
         .sheet(item: $entry) { e in
@@ -488,6 +490,108 @@ struct VeloPinEntry: View {
                 .disabled(first.isEmpty || second.isEmpty)
             }
             .navigationBarTitle(Text(title), displayMode: .inline)
+        }
+    }
+}
+
+// MARK: - Sempre collegata (prova): audio muto in background
+
+/// VELO (prova): iOS congela le app in background dopo ~30 s, e con loro il Tor interno. Un suono muto in ciclo
+/// (categoria playback, mescolato agli altri suoni, volume zero) tiene Velo sveglia e collegata, cosi' i messaggi
+/// arrivano subito. Costa batteria; iOS puo' comunque chiudere l'app se serve memoria. Spento di partenza.
+@objc class VeloKeepAlive: NSObject {
+    @objc static let shared = VeloKeepAlive()
+    private static let enabledKey = "veloKeepAlive"
+    private var player: AVAudioPlayer?
+    /// true se l'audio ha girato senza interruzioni dall'ultima uscita (Tor non e' mai stato congelato)
+    @objc private(set) var ranWholeBackground = false
+    @objc private(set) var isRunning = false
+
+    @objc static var isEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: enabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+    }
+
+    private override init() {
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(interrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(mediaReset), name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+    }
+
+    /// Un secondo di silenzio, WAV mono 8 kHz 16 bit, fatto in memoria.
+    private static func silentWav() -> Data {
+        let rate: UInt32 = 8000, samples: UInt32 = 8000
+        var d = Data()
+        func u32(_ v: UInt32) { var x = v.littleEndian; d.append(Data(bytes: &x, count: 4)) }
+        func u16(_ v: UInt16) { var x = v.littleEndian; d.append(Data(bytes: &x, count: 2)) }
+        d.append("RIFF".data(using: .ascii)!); u32(36 + samples * 2); d.append("WAVE".data(using: .ascii)!)
+        d.append("fmt ".data(using: .ascii)!); u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16)
+        d.append("data".data(using: .ascii)!); u32(samples * 2); d.append(Data(count: Int(samples * 2)))
+        return d
+    }
+
+    @objc func startIfEnabled() {
+        ranWholeBackground = false
+        guard VeloKeepAlive.isEnabled else { return }
+        ranWholeBackground = start()
+    }
+
+    @discardableResult private func start() -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+            if player == nil {
+                player = try AVAudioPlayer(data: VeloKeepAlive.silentWav())
+                player?.numberOfLoops = -1
+                player?.volume = 0
+            }
+            player?.play()
+            isRunning = player?.isPlaying ?? false
+            DDLogInfo("VELO: sempre collegata, audio muto avviato: \(isRunning)")
+            return isRunning
+        } catch {
+            DDLogError("VELO: sempre collegata, audio muto non avviato: \(error)")
+            isRunning = false
+            return false
+        }
+    }
+
+    @objc func stop() {
+        guard player != nil || isRunning else { return }
+        player?.stop()
+        isRunning = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        DDLogInfo("VELO: sempre collegata, audio muto fermato")
+    }
+
+    @objc private func interrupted(_ note: Notification) {
+        guard isRunning || ranWholeBackground,
+              let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        if type == .began {
+            // chiamata, sveglia...: iOS ferma il suono e puo' congelare l'app, Tor andra' risvegliato
+            isRunning = false
+            ranWholeBackground = false
+            DDLogInfo("VELO: sempre collegata, audio interrotto")
+        } else if type == .ended && UIApplication.shared.applicationState == .background && VeloKeepAlive.isEnabled {
+            DDLogInfo("VELO: sempre collegata, riparto dopo l'interruzione")
+            start()
+        }
+    }
+
+    @objc private func mediaReset() {
+        player = nil
+        if isRunning && VeloKeepAlive.isEnabled { start() }
+    }
+}
+
+struct VeloKeepAliveSection: View {
+    @State private var enabled = VeloKeepAlive.isEnabled
+    var body: some View {
+        Section(header: Text("Connessione"), footer: Text("Prova: in background Velo resta sveglia con un suono muto, cosi' Tor e la connessione non si fermano e i messaggi arrivano subito. Consuma piu' batteria. Non chiudere Velo dal selettore delle app, altrimenti si ferma comunque.")) {
+            Toggle("Sempre collegata (prova)", isOn: $enabled)
+                .onChange(of: enabled) { VeloKeepAlive.isEnabled = enabled }
         }
     }
 }

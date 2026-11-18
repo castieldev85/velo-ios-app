@@ -1213,9 +1213,12 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     [[MLXMPPManager sharedInstance] nowForegrounded];           //NOTE: this will unfreeze all queues in our accounts
 
     //VELO: se siamo stati sospesi abbastanza da perdere i socket, risvegliamo Tor
-    if(veloBackgroundSince != nil && -[veloBackgroundSince timeIntervalSinceNow] > 20)
+    //(non se "sempre collegata" ha tenuto sveglia l'app per tutto il tempo: Tor non si e' mai fermato)
+    if(veloBackgroundSince != nil && -[veloBackgroundSince timeIntervalSinceNow] > 20 && !VeloKeepAlive.shared.ranWholeBackground)
         veloWakeTor();
     veloBackgroundSince = nil;
+    //VELO: in primo piano l'audio muto non serve
+    [VeloKeepAlive.shared stop];
 
     //make sure we call the NSURLSession callback that was delayed by app freeze
     [self handleFiletransferEventsFinished];
@@ -1252,6 +1255,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     //VELO: al ritorno serve di nuovo il PIN
     [[VeloLockController shared] appDidEnterBackground];
     veloBackgroundSince = [NSDate date];
+    //VELO (prova): "sempre collegata" tiene sveglia l'app con un suono muto, cosi' Tor e la connessione restano su
+    [VeloKeepAlive.shared startIfEnabled];
     UIApplicationState state = [application applicationState];
     if(state == UIApplicationStateInactive)
         DDLogInfo(@"Screen lock / incoming call");
@@ -1488,6 +1493,12 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
             
             DDLogInfo(@"### checking if background is still needed ###");
             BOOL background = [HelperTools isInBackground];
+            //VELO: con "sempre collegata" attiva si resta collegati anche da inattivi
+            if(background && VeloKeepAlive.shared.isRunning)
+            {
+                DDLogInfo(@"### All accounts idle, but VELO keep-alive is running: staying connected ###");
+                return;
+            }
             if(background)
             {
                 DDLogInfo(@"### All accounts idle, disconnecting and stopping all background tasks ###");
@@ -1565,7 +1576,8 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
                     //ui background tasks expire at the same time as background processing/refreshing tasks
                     //--> we have to check if a background processing/refreshing task is running and don't disconnect, if so
                     BOOL stopped = NO;
-                    if(self.bgProcessing == nil && self.bgRefreshing == nil)
+                    //VELO: con "sempre collegata" attiva l'app resta sveglia: si chiude solo il permesso UIKit, non la connessione
+                    if(self.bgProcessing == nil && self.bgRefreshing == nil && !VeloKeepAlive.shared.isRunning)
                     {
                         DDLogVerbose(@"Setting _shutdownPending to YES...");
                         self->_shutdownPending = YES;
@@ -1625,7 +1637,7 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
                 //ui background tasks expire at the same time as background fetching tasks
                 //--> we have to check if an ui bg task is running and don't disconnect, if so
                 BOOL stopped = NO;
-                if(background && self->_voipProcessor.pendingCallsCount == 0 && self->_bgTask == UIBackgroundTaskInvalid)
+                if(background && self->_voipProcessor.pendingCallsCount == 0 && self->_bgTask == UIBackgroundTaskInvalid && !VeloKeepAlive.shared.isRunning)
                 {
                     DDLogVerbose(@"Setting _shutdownPending to YES...");
                     self->_shutdownPending = YES;
@@ -1702,7 +1714,9 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     }
     //don't use *self* connectIfNecessary, because we don't need an additional UIKit bg task, this one is already a bg task
     //VELO: svegliati da iOS in background dopo una sospensione: la porta di Tor e' morta, va risvegliata prima di collegarsi
-    veloWakeTorIfSuspended();
+    //(con "sempre collegata" attiva l'app non e' mai stata congelata: niente da risvegliare)
+    if(!VeloKeepAlive.shared.isRunning)
+        veloWakeTorIfSuspended();
     [[MLXMPPManager sharedInstance] connectIfNecessary];
     
     //request another execution in BGFETCH_DEFAULT_INTERVAL seconds
@@ -1732,7 +1746,7 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
                 //ui background tasks expire at the same time as background fetching tasks
                 //--> we have to check if an ui bg task is running and don't disconnect, if so
                 BOOL stopped = NO;
-                if(background && self->_voipProcessor.pendingCallsCount == 0 && self->_bgTask == UIBackgroundTaskInvalid)
+                if(background && self->_voipProcessor.pendingCallsCount == 0 && self->_bgTask == UIBackgroundTaskInvalid && !VeloKeepAlive.shared.isRunning)
                 {
                     DDLogVerbose(@"Setting _shutdownPending to YES...");
                     self->_shutdownPending = YES;
@@ -1802,7 +1816,9 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
     }
     //don't use *self* connectIfNecessary, because we don't need an additional UIKit bg task, this one is already a bg task
     //VELO: svegliati da iOS in background dopo una sospensione: la porta di Tor e' morta, va risvegliata prima di collegarsi
-    veloWakeTorIfSuspended();
+    //(con "sempre collegata" attiva l'app non e' mai stata congelata: niente da risvegliare)
+    if(!VeloKeepAlive.shared.isRunning)
+        veloWakeTorIfSuspended();
     [[MLXMPPManager sharedInstance] connectIfNecessary];
     
     //request another execution in BGFETCH_DEFAULT_INTERVAL seconds
