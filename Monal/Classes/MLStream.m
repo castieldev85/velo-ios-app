@@ -815,10 +815,17 @@
 //list supported channel-binding types (highest security first!)
 -(NSArray*) supportedChannelBindingTypes
 {
-    //we can't be sure that EMS gets negotiated with TLS1.2, so don't try to use exporter there
-    if(self.isTLS13)
-        return @[@"tls-exporter", @"tls-server-end-point"];
-    return @[@"tls-server-end-point"];
+    //VELO: la pagina Dettagli server resta viva dopo la chiusura e chiede questo valore a ogni cambio della connessione,
+    //anche durante il ricollegamento in background: con il flusso non aperto (o senza TLS) tlsVersion farebbe chiudere l'app
+    @synchronized(self.shared_state) {
+        if(!([self streamStatus] >= NSStreamStatusOpen && [self streamStatus] < NSStreamStatusClosed) || !self.shared_state.hasTLS)
+            return @[];
+        //we can't be sure that EMS gets negotiated with TLS1.2, so don't try to use exporter there
+        //(VELO: dentro lo stesso lucchetto ricorsivo, lo stato non cambia tra il controllo e tlsVersion)
+        if(self.isTLS13)
+            return @[@"tls-exporter", @"tls-server-end-point"];
+        return @[@"tls-server-end-point"];
+    }
 }
 
 -(NSData* _Nullable) channelBindingDataForType:(NSString* _Nullable) type
