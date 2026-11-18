@@ -1012,10 +1012,10 @@ struct VeloHomeTitle: View {
         let host = UIHostingController(rootView: VeloHomeTitle())
         host.view.backgroundColor = .clear
         host.sizingOptions = .intrinsicContentSize
-        vc.addChild(host)
+        //NIENTE addChild: la vista finisce nella barra di navigazione (gerarchia di un altro controller) e iOS
+        //chiude l'app con un'eccezione di gerarchia incoerente (crash all'avvio del 18/11). Il contenitore tiene vivo il controller.
         let wrapper = VeloHomeTitleHost(host: host)
         vc.navigationItem.titleView = wrapper
-        host.didMove(toParent: vc)
     }
 }
 
