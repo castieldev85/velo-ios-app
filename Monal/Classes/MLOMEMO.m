@@ -576,9 +576,33 @@ $$
     //this has to be a property of the xmpp class to persist it even across state resets
     self.account.hasSeenOmemoDeviceListAfterOwnDeviceid = YES;
     DDLogVerbose(@"Own devicelist for account %@ is now: %@", self.account, self.ownDeviceList);
-    
+
+    //VELO: pulizia una tantum per account (numeri morti dei vecchi avvii): la lista vecchia resta col solo
+    //numero attuale. Il segno si mette solo quando il server ci rimanda la lista gia' pulita.
+    NSNumber* veloOwnLegacyId = [NSNumber numberWithUnsignedInt:self.monalSignalStore.deviceid];
+    NSString* veloLegacyCleanKey = [NSString stringWithFormat:@"veloDevClean.legacy.%@", self.account.accountID];
+    if(self.monalSignalStore.deviceid != 0 && ![[HelperTools defaultsDB] boolForKey:veloLegacyCleanKey])
+    {
+        if(self.ownDeviceList.count == 1 && [self.ownDeviceList containsObject:veloOwnLegacyId])
+        {
+            DDLogInfo(@"VELO: own legacy devicelist is clean (%@)", veloOwnLegacyId);
+            [[HelperTools defaultsDB] setBool:YES forKey:veloLegacyCleanKey];
+        }
+        else
+        {
+            DDLogInfo(@"VELO: cleaning own legacy devicelist %@ -> only %@", self.ownDeviceList, veloOwnLegacyId);
+            for(NSNumber* dead in [self.ownDeviceList copy])
+                if(![dead isEqualToNumber:veloOwnLegacyId])
+                    [self bulkDeleteDeviceForSource:self.account.connectionProperties.identity.jid andRid:dead];
+            self.ownDeviceList = [NSMutableSet setWithObject:veloOwnLegacyId];
+            if([receivedDevices containsObject:veloOwnLegacyId])
+                [self publishOwnDeviceList];
+            //se il nostro numero mancava, lo pubblica il ramo qui sotto (bundle prima della lista)
+        }
+    }
+
     //make sure to add our own deviceid to the devicelist if it's not yet there
-    if(![self.ownDeviceList containsObject:[NSNumber numberWithUnsignedInt:self.monalSignalStore.deviceid]])
+    if(![receivedDevices containsObject:[NSNumber numberWithUnsignedInt:self.monalSignalStore.deviceid]])
     {
         [self.ownDeviceList addObject:[NSNumber numberWithUnsignedInt:self.monalSignalStore.deviceid]];
         //generate new prekeys (piggyback the prekey refill onto the bundle push already needed because our device was unknown before)
@@ -1757,6 +1781,25 @@ $$
     NSString* ownJid = self.account.connectionProperties.identity.jid;
     NSNumber* ownId = @(self.veloPQ.deviceId);
     NSArray<NSNumber*>* ids = receivedIds;
+    //VELO: pulizia una tantum per account della propria lista PQ (identita' PQ dei vecchi avvii, bundle
+    //ormai inesistente: la Android li scarta con "empty or invalid"). Segno messo solo sulla lista gia' pulita.
+    NSString* pqCleanKey = [NSString stringWithFormat:@"veloDevClean.pq.%@", self.account.accountID];
+    if([jid isEqualToString:ownJid] && ![[HelperTools defaultsDB] boolForKey:pqCleanKey])
+    {
+        if(ids.count == 1 && [ids containsObject:ownId])
+        {
+            DDLogInfo(@"VELO PQ: own devicelist is clean (%@)", ownId);
+            [[HelperTools defaultsDB] setBool:YES forKey:pqCleanKey];
+        }
+        else
+        {
+            DDLogInfo(@"VELO PQ: cleaning own devicelist %@ -> only %@", ids, ownId);
+            ids = @[ownId];
+            [self veloPQPublishDeviceList:ids];
+            [self.veloPQ setDeviceList:ids forJid:jid];
+            return;
+        }
+    }
     if([jid isEqualToString:ownJid] && ![ids containsObject:ownId])
     {
         NSMutableArray<NSNumber*>* withOwn = [ids mutableCopy];
