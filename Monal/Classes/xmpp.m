@@ -4210,7 +4210,11 @@ static NSRegularExpression* fastTokenRemovalRegex;
     NSString* veloStory = (isUpload && encrypt && !contact.isMuc) ? [VeloMessageRules takePendingStoryXMLForAccount:self.accountID jid:contact.contactJid messageId:messageNode.id] : nil;
     if(veloStory != nil)
         veloTimer = 0;
+    //VELO: foto/video a visualizzazione singola (come la Velo Android): <view-once/> dentro la busta PQ
+    NSString* veloViewOnce = (isUpload && encrypt && !contact.isMuc && veloStory == nil) ? [VeloMessageRules takePendingViewOnceXMLForAccount:self.accountID jid:contact.contactJid messageId:messageNode.id] : nil;
     NSMutableArray* veloExtra = [NSMutableArray new];
+    if(veloViewOnce != nil)
+        [veloExtra addObject:veloViewOnce];
     if(veloTimer > 0)
         [veloExtra addObject:[NSString stringWithFormat:@"<ephemeral xmlns=\"urn:xmpp:ephemeral:0\" timer=\"%ld\"/>", (long)veloTimer]];
     if(veloStory != nil)

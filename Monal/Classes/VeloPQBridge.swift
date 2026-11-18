@@ -476,6 +476,49 @@ enum VeloPQXML {
         return xml
     }
 
+    // MARK: invio a visualizzazione singola (urn:velo:view-once:0), come VeloViewOnce della Velo Android
+
+    /// Scelte come la Android: 0 = singola visione, poi secondi visibili dopo l'apertura.
+    public static let viewOnceChoices: [Int] = [0, 3, 10, 30]
+    /// Quanto tiene chi manda la propria copia (VeloViewOnce.SENDER_KEEP_MS).
+    private static let viewOnceSenderKeep: TimeInterval = 24 * 60 * 60
+    /// Chat con la visualizzazione singola accesa per le prossime foto/video (solo in memoria, come la Android).
+    private static var viewOnceArmed: [String: Int] = [:]
+    private static var pendingViewOnce: [String: (seconds: Int, at: Date)] = [:]
+
+    public static func viewOnceArmedSeconds(account: NSNumber, jid: String) -> Int? {
+        lock.lock(); defer { lock.unlock() }
+        return viewOnceArmed["\(account.stringValue)|\(jid)"]
+    }
+
+    /// nil = spenta ("Non eliminare").
+    public static func setViewOnceArmed(_ seconds: Int?, account: NSNumber, jid: String) {
+        lock.lock(); defer { lock.unlock() }
+        viewOnceArmed["\(account.stringValue)|\(jid)"] = seconds
+    }
+
+    /// Prima di mandare una foto o un video a visualizzazione singola: lo prende xmpp.sendMessage (entro 10 minuti).
+    public static func setPendingViewOnce(account: NSNumber, jid: String, seconds: Int) {
+        lock.lock(); defer { lock.unlock() }
+        pendingViewOnce["\(account.stringValue)|\(jid)"] = (max(0, min(seconds, 60)), Date())
+    }
+
+    /// L'elemento <view-once/> per questo messaggio file, se ce n'è uno in attesa. Registra la nostra copia:
+    /// segnaposto senza anteprima e messaggio cancellato dopo un giorno, come la Android.
+    @objc(takePendingViewOnceXMLForAccount:jid:messageId:)
+    public static func takePendingViewOnceXML(account: NSNumber, jid: String, messageId: String) -> String? {
+        lock.lock()
+        let pending = pendingViewOnce.removeValue(forKey: "\(account.stringValue)|\(jid)")
+        lock.unlock()
+        guard let pending, Date().timeIntervalSince(pending.at) < 600 else { return nil }
+        registerViewOnce(account: account, buddy: jid, messageId: messageId, seconds: pending.seconds)
+        registerExpiry(account: account, buddy: jid, messageId: messageId, at: Date().addingTimeInterval(viewOnceSenderKeep))
+        if pending.seconds > 0 {
+            return "<view-once xmlns=\"urn:velo:view-once:0\" seconds=\"\(pending.seconds)\"/>"
+        }
+        return "<view-once xmlns=\"urn:velo:view-once:0\"/>"
+    }
+
     // MARK: cancellazione a distanza (urn:velo:remote-wipe:0), come RemoteWipe della Velo Android
 
     /// Quando l'account è comparso su questo telefono: un comando emesso prima non vale.

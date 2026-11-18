@@ -130,6 +130,8 @@ struct ChatView: View {
     @State private var typingTimer: Timer?
     //VELO: orologio dei messaggi di questa chat e foto/video a visualizzazione singola
     @State private var veloTimer = 0
+    //VELO: nil = spenta, altrimenti i secondi della visualizzazione singola per le prossime foto/video
+    @State private var veloViewOnceArmed: Int? = nil
     @State private var veloViewOnce: VeloViewOnceItem?
 
     init(contact: ObservableKVOWrapper<MLContact>) {
@@ -189,7 +191,8 @@ struct ChatView: View {
                 return [.delete]
             }
             if (message as! ChatViewMessage).veloViewOnceSeconds != nil {
-                return [.openOnce, .delete]
+                //VELO: la nostra foto a visualizzazione singola non si apre (segnaposto), si puo' solo eliminare
+                return mlMessage.inbound ? [.openOnce, .delete] : [.retract, .delete]
             }
             if case .error = message.status {
                 return [.resend, .delete]
@@ -492,9 +495,19 @@ struct ChatView: View {
             }
             localFileURL.stopAccessingSecurityScopedResource()
             await MainActor.run {
+                //VELO: visualizzazione singola accesa → <view-once/> per questa foto o video (lo prende xmpp.sendMessage)
+                let isMedia = mimeType.hasPrefix("image/") || mimeType.hasPrefix("video/")
+                let viewOnce = (isMedia && self.contact.isEncrypted) ? veloViewOnceArmed : nil
+                if let viewOnce {
+                    VeloMessageRules.setPendingViewOnce(account: self.account.accountID, jid: self.contact.obj.contactJid, seconds: viewOnce)
+                }
                 guard let newMLMessage = MLXMPPManager.sharedInstance().sendMessageAndAddToHistory(message: url, havingType: kMessageTypeFiletransfer, toContact: self.contact.obj, isEncrypted: self.contact.isEncrypted, uploadInfo: ["mimeType": mimeType, "size": size]) else {
                     self.isUploadingFile = false
                     return
+                }
+                if let viewOnce {
+                    //anche qui, prima del segnaposto: l'invio puo' finire dopo (registrazione ripetuta, stessa chiave)
+                    VeloMessageRules.registerViewOnce(account: self.account.accountID, buddy: self.contact.obj.contactJid, messageId: newMLMessage.messageId, seconds: viewOnce)
                 }
                 messages.append(ChatViewMessage(newMLMessage))
             }
@@ -571,6 +584,11 @@ struct ChatView: View {
                     return
                 }
                 messages.append(ChatViewMessage(newMLMessage))
+                //VELO: un messaggio di testo spegne la visualizzazione singola, come la Android
+                if veloViewOnceArmed != nil {
+                    veloViewOnceArmed = nil
+                    VeloMessageRules.setViewOnceArmed(nil, account: self.account.accountID, jid: self.contact.obj.contactJid)
+                }
                 sendChatState(isTyping: false)
                 // Clear the draft to show the newly sent message in active chats
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -928,6 +946,39 @@ struct ChatView: View {
                     }
                 }
 
+                //VELO: prossime foto e video a visualizzazione singola (come la Velo Android), solo verso chi ha Velo PQ
+                if !(contact.isMuc || contact.isSelf) && account.omemo.veloPQHasDevices(for: contact.obj.contactJid) {
+                    Menu {
+                        Text("Prossime foto e video: per quanto restano visibili dopo l'apertura")
+                        ForEach(VeloMessageRules.viewOnceChoices, id: \.self) { seconds in
+                            Button {
+                                veloViewOnceArmed = seconds
+                                VeloMessageRules.setViewOnceArmed(seconds, account: account.accountID, jid: contact.obj.contactJid)
+                            } label: {
+                                let title = seconds == 0 ? "Singola visione" : "\(seconds) secondi"
+                                if veloViewOnceArmed == seconds {
+                                    Label(title, systemImage: "checkmark")
+                                } else {
+                                    Text(title)
+                                }
+                            }
+                        }
+                        Button {
+                            veloViewOnceArmed = nil
+                            VeloMessageRules.setViewOnceArmed(nil, account: account.accountID, jid: contact.obj.contactJid)
+                        } label: {
+                            if veloViewOnceArmed == nil {
+                                Label("Non eliminare", systemImage: "checkmark")
+                            } else {
+                                Text("Non eliminare")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: veloViewOnceArmed != nil ? "1.circle.fill" : "1.circle")
+                            .foregroundColor(veloPalette.onBar.color)
+                    }
+                }
+
                 if ownRole == kMucRoleVisitor {
                     Button {
                         let _ = showPromisingLoadingOverlay(overlay, headline:"Requesting Voice") {
@@ -1022,6 +1073,7 @@ struct ChatView: View {
 
             checkOmemoSupport(withAlert:false)
             veloTimer = VeloMessageRules.sendTimer(account: account.accountID, jid: contact.obj.contactJid)
+            veloViewOnceArmed = VeloMessageRules.viewOnceArmedSeconds(account: account.accountID, jid: contact.obj.contactJid)
             let messageDraft = DataLayer.sharedInstance().loadMessageDraft(self.contact.contactJid, forAccount:self.account.accountID)
             if let messageDraft, !messageDraft.isEmpty {
                 self.inputText = messageDraft
@@ -1175,7 +1227,11 @@ class ChatViewMessage: ExyteChat.Message {
     //VELO: nil se non e' a visualizzazione singola, altrimenti i secondi dopo l'apertura (0 = finche' non la chiudi)
     let veloViewOnceSeconds: Int?
     override var text: String {
-        if veloViewOnceSeconds != nil {
+        if let seconds = veloViewOnceSeconds {
+            if !innerMessage.obj.inbound {
+                //VELO: chi manda tiene solo un segnaposto, come la Android (velo_view_once_sent / _sent_seconds)
+                return seconds == 0 ? "📷 Inviata a visualizzazione singola" : "📷 Inviata · visibile \(seconds) secondi"
+            }
             return "👁 Visualizzazione singola · tieni premuto e scegli «Apri (una volta)»"
         }
         if self.staticLocation != nil {
@@ -1345,7 +1401,7 @@ class ChatViewMessage: ExyteChat.Message {
         } else {
             self.fileInfo = nil
         }
-        if message.inbound, let seconds = VeloMessageRules.viewOnceSeconds(account: message.accountID, buddy: message.buddyName, messageId: message.messageId) {
+        if let seconds = VeloMessageRules.viewOnceSeconds(account: message.accountID, buddy: message.buddyName, messageId: message.messageId) {
             self.veloViewOnceSeconds = seconds.intValue
         } else {
             self.veloViewOnceSeconds = nil
