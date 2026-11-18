@@ -457,15 +457,19 @@ struct VeloStoryComposer: View {
             .navigationTitle("Nuova storia")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                //VELO: colore esplicito dei pulsanti della barra: con la tinta del tema, in alcuni temi, erano invisibili
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annulla") { cleanupAndClose() }.disabled(sending)
+                        .foregroundColor(VeloTheme.barItemColor)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending {
-                        ProgressView()
+                        ProgressView().tint(VeloTheme.barItemColor)
                     } else {
+                        let ready = !((image == nil && videoURL == nil) || !recipients.contains { $0.selected })
                         Button("Pubblica") { publish() }
-                            .disabled((image == nil && videoURL == nil) || !recipients.contains { $0.selected })
+                            .disabled(!ready)
+                            .foregroundColor(VeloTheme.barItemColor.opacity(ready ? 1 : 0.45))
                     }
                 }
             }

@@ -924,57 +924,54 @@ struct ChatView: View {
                     .tint(veloPalette.onBar.color)
                     .opacity(isLoadingMamHistory || isUploadingFile ? 1 : 0)
 
-                //VELO: orologio dei messaggi a tempo (vale per i messaggi nuovi di questa chat)
+                //VELO: un solo pulsante (orologio) per messaggi a tempo e visualizzazione singola: con due pulsanti
+                //la barra non ci stava piu' e iOS nascondeva quello della chiamata
                 if !(contact.isMuc || contact.isSelf) {
                     Menu {
-                        Text("I messaggi nuovi spariscono dopo:")
-                        ForEach(VeloMessageRules.timerChoices, id: \.self) { seconds in
-                            Button {
-                                veloTimer = seconds
-                                VeloMessageRules.setSendTimer(seconds, account: account.accountID, jid: contact.obj.contactJid)
-                            } label: {
-                                if veloTimer == seconds {
-                                    Label(VeloMessageRules.timerLabel(seconds), systemImage: "checkmark")
-                                } else {
-                                    Text(VeloMessageRules.timerLabel(seconds))
+                        Section("I messaggi nuovi spariscono dopo") {
+                            ForEach(VeloMessageRules.timerChoices, id: \.self) { seconds in
+                                Button {
+                                    veloTimer = seconds
+                                    VeloMessageRules.setSendTimer(seconds, account: account.accountID, jid: contact.obj.contactJid)
+                                } label: {
+                                    if veloTimer == seconds {
+                                        Label(VeloMessageRules.timerLabel(seconds), systemImage: "checkmark")
+                                    } else {
+                                        Text(VeloMessageRules.timerLabel(seconds))
+                                    }
+                                }
+                            }
+                        }
+                        //prossime foto e video a visualizzazione singola (come la Velo Android), solo verso chi ha Velo PQ
+                        if account.omemo.veloPQHasDevices(for: contact.obj.contactJid) {
+                            Section("Prossime foto e video") {
+                                ForEach(VeloMessageRules.viewOnceChoices, id: \.self) { seconds in
+                                    Button {
+                                        veloViewOnceArmed = seconds
+                                        VeloMessageRules.setViewOnceArmed(seconds, account: account.accountID, jid: contact.obj.contactJid)
+                                    } label: {
+                                        let title = seconds == 0 ? "Singola visione" : "Visibile \(seconds) secondi"
+                                        if veloViewOnceArmed == seconds {
+                                            Label(title, systemImage: "checkmark")
+                                        } else {
+                                            Text(title)
+                                        }
+                                    }
+                                }
+                                Button {
+                                    veloViewOnceArmed = nil
+                                    VeloMessageRules.setViewOnceArmed(nil, account: account.accountID, jid: contact.obj.contactJid)
+                                } label: {
+                                    if veloViewOnceArmed == nil {
+                                        Label("Non eliminare", systemImage: "checkmark")
+                                    } else {
+                                        Text("Non eliminare")
+                                    }
                                 }
                             }
                         }
                     } label: {
-                        Image(systemName: veloTimer > 0 ? "timer.circle.fill" : "timer")
-                            .foregroundColor(veloPalette.onBar.color)
-                    }
-                }
-
-                //VELO: prossime foto e video a visualizzazione singola (come la Velo Android), solo verso chi ha Velo PQ
-                if !(contact.isMuc || contact.isSelf) && account.omemo.veloPQHasDevices(for: contact.obj.contactJid) {
-                    Menu {
-                        Text("Prossime foto e video: per quanto restano visibili dopo l'apertura")
-                        ForEach(VeloMessageRules.viewOnceChoices, id: \.self) { seconds in
-                            Button {
-                                veloViewOnceArmed = seconds
-                                VeloMessageRules.setViewOnceArmed(seconds, account: account.accountID, jid: contact.obj.contactJid)
-                            } label: {
-                                let title = seconds == 0 ? "Singola visione" : "\(seconds) secondi"
-                                if veloViewOnceArmed == seconds {
-                                    Label(title, systemImage: "checkmark")
-                                } else {
-                                    Text(title)
-                                }
-                            }
-                        }
-                        Button {
-                            veloViewOnceArmed = nil
-                            VeloMessageRules.setViewOnceArmed(nil, account: account.accountID, jid: contact.obj.contactJid)
-                        } label: {
-                            if veloViewOnceArmed == nil {
-                                Label("Non eliminare", systemImage: "checkmark")
-                            } else {
-                                Text("Non eliminare")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: veloViewOnceArmed != nil ? "1.circle.fill" : "1.circle")
+                        Image(systemName: (veloTimer > 0 || veloViewOnceArmed != nil) ? "timer.circle.fill" : "timer")
                             .foregroundColor(veloPalette.onBar.color)
                     }
                 }
