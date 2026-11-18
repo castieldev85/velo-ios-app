@@ -964,7 +964,7 @@ struct VeloCustomizeView: View {
         return Color(red: mix(base.0), green: mix(base.1), blue: mix(base.2))
     }
 
-    var description: String {
+    var statusText: String {
         switch state {
         case .connected: return "Collegata tramite Tor"
         case .connecting: return "Collegamento a Tor in corso…"
@@ -980,7 +980,7 @@ struct VeloTorPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(status.color).frame(width: 8, height: 8)
-            Text(explain ? status.description : "Tor")
+            Text(explain ? status.statusText : "Tor")
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
         }
@@ -992,7 +992,7 @@ struct VeloTorPill: View {
             explain = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { explain = false }
         }
-        .accessibilityLabel(status.description)
+        .accessibilityLabel(status.statusText)
     }
 }
 

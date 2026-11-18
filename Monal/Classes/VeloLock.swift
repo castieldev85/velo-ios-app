@@ -616,7 +616,7 @@ struct VeloDiagnosticsView: View {
                 Section(header: Text("Tor"), footer: Text("Verde vuol dire che Tor ha i suoi circuiti e che gli account sono collegati: i messaggi passano davvero.")) {
                     HStack(spacing: 10) {
                         Circle().fill(tor.color).frame(width: 10, height: 10)
-                        Text(tor.description)
+                        Text(tor.statusText)
                     }
                 }
                 Section(header: Text("Account")) {
