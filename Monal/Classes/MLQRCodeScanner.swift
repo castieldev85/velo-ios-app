@@ -160,6 +160,19 @@ struct XMPPLoginQRCode : Codable
             }
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
 
+            //VELO: invito Velo (velo:invite? o link del sito con l'invito dopo il '#')
+            if VeloInvite.find(qrCodeAsString) != nil {
+                if let loginDelegate = self.loginDelegate {
+                    loginDelegate.closeQRCodeScanner()
+                } else {
+                    self.dismiss(animated: true)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                    VeloInviteFlow.start(text: qrCodeAsString, from: nil)
+                }
+                return
+            }
+
             //open https?:// urls in safari view controller just as they would if the qrcode was scanned using the camera app
             if qrCodeAsString.hasPrefix("https://") || qrCodeAsString.hasPrefix("http://") {
                 if let url = URL(string:qrCodeAsString) {

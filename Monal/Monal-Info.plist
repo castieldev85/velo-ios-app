@@ -48,6 +48,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>xmpp</string>
+				<string>velo</string>
 			</array>
 		</dict>
 		<dict>

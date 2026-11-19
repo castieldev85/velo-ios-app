@@ -855,6 +855,18 @@ typedef NS_ENUM(NSUInteger, MLGracefulTimeoutType) {
         [self handleXMPPURL:url];
         return YES;
     }
+    else if([url.scheme isEqualToString:@"velo"])           //VELO: inviti (velo:invite?...), come su Android
+    {
+        NSString* text = url.absoluteString;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+            while(self.activeChats == nil)
+                usleep(100000);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [VeloInviteFlow startWithText:text from:nil];
+            });
+        });
+        return YES;
+    }
     else if([url.scheme isEqualToString:kMonalOpenURL.scheme])      //app opened via sharesheet
     {
         //make sure our outbox content is sent (if the mainapp is still connected and also was in foreground while the sharesheet was used)
